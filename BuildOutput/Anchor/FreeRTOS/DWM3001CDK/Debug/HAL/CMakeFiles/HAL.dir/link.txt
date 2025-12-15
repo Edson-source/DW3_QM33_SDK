@@ -1,2 +1,0 @@
-C:\PROGRA~2\GNUARM~1\102021~1.10\bin\ARM-NO~2.EXE qc libHAL.a CMakeFiles/HAL.dir/HAL_crypto.c.obj CMakeFiles/HAL.dir/HAL_watchdog.c.obj CMakeFiles/HAL.dir/HAL_uart.c.obj CMakeFiles/HAL.dir/HAL_error.c.obj CMakeFiles/HAL.dir/HAL_usb.c.obj CMakeFiles/HAL.dir/HAL_cpu.c.obj CMakeFiles/HAL.dir/9d5f4eb172efd92f167b55b52b625584/Src/Boards/Src/DWM3001CDK/platform_l1_config.c.obj CMakeFiles/HAL.dir/9d5f4eb172efd92f167b55b52b625584/Src/Boards/Src/Common/helper_platform_l1_config.c.obj
-C:\PROGRA~2\GNUARM~1\102021~1.10\bin\AR17F9~1.EXE libHAL.a

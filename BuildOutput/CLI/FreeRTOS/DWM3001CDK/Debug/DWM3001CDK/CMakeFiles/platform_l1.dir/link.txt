@@ -1,2 +1,0 @@
-C:\PROGRA~2\GNUARM~1\102021~1.10\bin\ARM-NO~2.EXE qc libplatform_l1.a CMakeFiles/platform_l1.dir/platform_l1_config.c.obj CMakeFiles/platform_l1.dir/9d5f4eb172efd92f167b55b52b625584/Src/Boards/Src/Common/helper_platform_l1_config.c.obj
-C:\PROGRA~2\GNUARM~1\102021~1.10\bin\AR17F9~1.EXE libplatform_l1.a
