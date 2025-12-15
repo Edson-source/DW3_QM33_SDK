@@ -1,0 +1,26 @@
+
+# Consider dependencies only in project.
+set(CMAKE_DEPENDS_IN_PROJECT_ONLY OFF)
+
+# The set of languages for which implicit dependencies are needed:
+set(CMAKE_DEPENDS_LANGUAGES
+  )
+
+# The set of dependency files which are needed:
+set(CMAKE_DEPENDS_DEPENDENCY_FILES
+  "C:/Users/Projetos-6/Downloads/DW3_QM33_SDK_1.1.1/SDK/Firmware/DW3_QM33_SDK_1.1.1/Src/Apps/Src/fira/common_fira.c" "AppFira/CMakeFiles/fira.dir/common_fira.c.obj" "gcc" "AppFira/CMakeFiles/fira.dir/common_fira.c.obj.d"
+  "C:/Users/Projetos-6/Downloads/DW3_QM33_SDK_1.1.1/SDK/Firmware/DW3_QM33_SDK_1.1.1/Src/Apps/Src/fira/fira_app.c" "AppFira/CMakeFiles/fira.dir/fira_app.c.obj" "gcc" "AppFira/CMakeFiles/fira.dir/fira_app.c.obj.d"
+  "C:/Users/Projetos-6/Downloads/DW3_QM33_SDK_1.1.1/SDK/Firmware/DW3_QM33_SDK_1.1.1/Src/Apps/Src/fira/fira_dw3000.c" "AppFira/CMakeFiles/fira.dir/fira_dw3000.c.obj" "gcc" "AppFira/CMakeFiles/fira.dir/fira_dw3000.c.obj.d"
+  "C:/Users/Projetos-6/Downloads/DW3_QM33_SDK_1.1.1/SDK/Firmware/DW3_QM33_SDK_1.1.1/Src/Apps/Src/fira/fira_fn.c" "AppFira/CMakeFiles/fira.dir/fira_fn.c.obj" "gcc" "AppFira/CMakeFiles/fira.dir/fira_fn.c.obj.d"
+  )
+
+# Targets to which this target links which contain Fortran sources.
+set(CMAKE_Fortran_TARGET_LINKED_INFO_FILES
+  )
+
+# Targets to which this target links which contain Fortran sources.
+set(CMAKE_Fortran_TARGET_FORWARD_LINKED_INFO_FILES
+  )
+
+# Fortran module output directory.
+set(CMAKE_Fortran_TARGET_MODULE_DIR "")

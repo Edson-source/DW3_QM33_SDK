@@ -1,0 +1,2 @@
+C:\PROGRA~2\GNUARM~1\102021~1.10\bin\ARM-NO~2.EXE qc libfira.a CMakeFiles/fira.dir/fira_dw3000.c.obj CMakeFiles/fira.dir/common_fira.c.obj CMakeFiles/fira.dir/fira_app.c.obj CMakeFiles/fira.dir/fira_fn.c.obj
+C:\PROGRA~2\GNUARM~1\102021~1.10\bin\AR17F9~1.EXE libfira.a

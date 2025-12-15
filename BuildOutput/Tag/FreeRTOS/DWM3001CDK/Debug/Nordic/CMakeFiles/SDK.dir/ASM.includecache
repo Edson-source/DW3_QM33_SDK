@@ -1,0 +1,14 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+C:/Users/Projetos-6/Downloads/DW3_QM33_SDK_1.1.1/SDK/Firmware/DW3_QM33_SDK_1.1.1/SDK_BSP/Nordic/SDK_17_1_0/modules/nrfx/mdk/gcc_startup_nrf52833.S
+startup_config.h
+C:/Users/Projetos-6/Downloads/DW3_QM33_SDK_1.1.1/SDK/Firmware/DW3_QM33_SDK_1.1.1/SDK_BSP/Nordic/SDK_17_1_0/modules/nrfx/mdk/startup_config.h
+
+C:/Users/Projetos-6/Downloads/DW3_QM33_SDK_1.1.1/SDK/Firmware/DW3_QM33_SDK_1.1.1/SDK_BSP/Nordic/SDK_17_1_0/modules/nrfx/mdk/startup_config.h
+

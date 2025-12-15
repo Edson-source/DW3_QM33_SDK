@@ -1,0 +1,23 @@
+# Script para compilar sem dor de cabeça
+# Salve como: compilar.ps1 na raiz do SDK
+
+# 1. Configura o GCC 10.3 na marra (ajuste o caminho se precisar)
+$env:Path = "C:\Program Files (x86)\GNU Arm Embedded Toolchain\10 2021.10\bin;" + $env:Path
+
+# 2. Ativa o ambiente Python (ajuste se o nome da pasta mudar)
+& ".\.venv\Scripts\Activate.ps1"
+
+# 3. Vai para a pasta do exemplo CLI
+Set-Location "Projects\FreeRTOS\CLI\DWM3001CDK"
+
+# 4. Gera os Makefiles (se não existirem)
+python CreateTarget.py -build Debug
+
+# 5. Vai para a pasta de saida e compila
+Set-Location "..\..\..\..\BuildOutput\CLI\FreeRTOS\DWM3001CDK\Debug"
+make -j
+
+# 6. Volta para a raiz
+Set-Location "..\..\..\..\..\..\"
+
+Write-Host "Compilação Finalizada! Confira a pasta BuildOutput." -ForegroundColor Green
