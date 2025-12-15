@@ -7,7 +7,7 @@ import sys
 EXTENSOES_PERMITIDAS = {'.py', '.js', '.html', '.css', '.c', '.cpp', '.h', '.java', '.json', '.sql', '.md', '.txt', '.ts'}
 
 # Configuração da API
-API_KEY = "AIzaSyCh8_cCDPk9B6ciHQV2lFPjXUgMFZhwoas"
+API_KEY = "Sua Chave Aqui"  # Substitua pela sua chave ou use a variável de ambiente
 # API_KEY = os.getenv('GEMINI_API_KEY')
 if not API_KEY:
     print("Erro: Variável GEMINI_API_KEY não encontrada.")

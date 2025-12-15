@@ -1,2 +1,5 @@
 .venv
+.vscode
+BuildOutput
+build
 __pycache__
