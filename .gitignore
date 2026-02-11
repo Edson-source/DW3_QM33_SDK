@@ -1,0 +1,5 @@
+BuildOutput
+build
+.venv
+.clang-format
+.cmake-format

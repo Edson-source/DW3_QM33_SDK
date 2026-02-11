@@ -44,7 +44,8 @@ build_board_mapping = {
     "HelloWorld": ["DWM3001CDK", "nRF52840DK"],
     "QANI": ["DWM3001CDK", "nRF52840DK", "Type2AB_EVB"],
     "UCI": ["DWM3001CDK", "nRF52840DK", "Type2AB_EVB"],
-    "CLI": ["DWM3001CDK", "nRF52840DK", "Type2AB_EVB"]
+    "CLI": ["DWM3001CDK", "nRF52840DK", "Type2AB_EVB"],
+    "Anticollision": ["DWM3001CDK"]
 }
 
 builds = ["Debug", "Release", "RelWithDebInfo", "MinSizeRel", "Custom"]

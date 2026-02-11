@@ -1,2 +1,0 @@
-C:\PROGRA~2\GNUARM~1\102021~1.10\bin\ARM-NO~2.EXE qc libqhal.a CMakeFiles/qhal.dir/src/qpwr.c.obj CMakeFiles/qhal.dir/src/qrtc.c.obj CMakeFiles/qhal.dir/src/nrfx/qgpio.c.obj CMakeFiles/qhal.dir/src/nrfx/qspi.c.obj CMakeFiles/qhal.dir/src/nrfx/qtimer.c.obj CMakeFiles/qhal.dir/src/nrfx/qrtc_share.c.obj CMakeFiles/qhal.dir/src/nrfx/persistent_time.c.obj CMakeFiles/qhal.dir/src/nrfx/qflash.c.obj CMakeFiles/qhal.dir/src/qm33/qpwr.c.obj CMakeFiles/qhal.dir/src/qm33/qotp.c.obj
-C:\PROGRA~2\GNUARM~1\102021~1.10\bin\AR17F9~1.EXE libqhal.a

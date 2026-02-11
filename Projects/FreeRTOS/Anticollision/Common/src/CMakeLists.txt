@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 Qorvo US, Inc.
 # SPDX-License-Identifier: LicenseRef-QORVO-2
 
-add_library(helloWorld STATIC hello_world.c)
+add_library(Anticollision STATIC anticollision.c)
+   
+target_include_directories(Anticollision PUBLIC ./ ../include)
 
-target_include_directories(helloWorld PUBLIC ./ ../include)
-
-target_link_libraries(helloWorld PUBLIC UWB qplatform)
+target_link_libraries(Anticollision PUBLIC UWB qplatform)

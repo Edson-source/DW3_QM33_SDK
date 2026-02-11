@@ -21,14 +21,16 @@
 #include "uwbmac/uwbmac.h"
 #include "persistent_time.h"
 
+#include "uwbmac/fira_helper.h" // Helper principal
+#include "quwbs/fbs/defs.h"    // Onde moram as constantes que você enviou
+
 #include <stdio.h>
 
-#define ANTI_COLLISION_TASK_STACK_SIZE_BYTES 1024
-
-#define NUM_BUFFERS                       5
-#define BUFFER_SIZE                       128
+#define ANTI_COLLISION_TASK_STACK_SIZE_BYTES 2048
+#define ALERT_DISTANCE_CM 3000 // 30 metros
 
 extern struct l1_config_platform_ops l1_config_platform_ops;
+
 static enum qerr uwb_stack_init(struct uwbmac_context **uwbmac_ctx)
 {
     enum qerr r;
@@ -60,59 +62,79 @@ exit:
     return r;
 }
 
-static void uwb_stack_deinit(struct uwbmac_context *uwbmac_ctx)
+// Callback: Onde o caminhão recebe a distância dos outros
+static void anticollision_ntf_cb(enum fira_helper_cb_type cb_type, const void *content, void *user_data)
 {
-    uwbmac_exit(uwbmac_ctx);
-    llhw_deinit();
-    l1_config_deinit();
-    qplatform_deinit();
+    if (cb_type == FIRA_HELPER_CB_TYPE_TWR_RANGE_NTF)
+    {
+        const struct fira_twr_ranging_results *results = (const struct fira_twr_ranging_results *)content;
+        
+        for (int i = 0; i < results->n_measurements; i++)
+        {
+            int32_t dist_cm = results->measurements[i].distance_cm;
+            uint16_t addr = results->measurements[i].short_addr;
+
+            // Filtro básico para ignorar leituras inválidas
+            if (dist_cm > 0 && dist_cm < 20000) // Até 200m
+            {
+                if (dist_cm < ALERT_DISTANCE_CM)
+                {
+                    QLOGW("!!! ALERTA DE COLISAO !!! Veiculo 0x%04X a %ld cm", addr, dist_cm);
+                    // Aqui você acionaria o GPIO do seu Buzzer
+                } else {
+                    QLOGI("Monitorando: Veiculo 0x%04X a %ld cm", addr, dist_cm);
+                }
+            }
+        }
+    }
 }
 
 static void anticollision_task(void *arg)
 {
-    static char buf[NUM_BUFFERS][BUFFER_SIZE];
     struct uwbmac_context *uwbmac_ctx = NULL;
-    struct uwbmac_device_info device_info;
+    struct fira_context fira_ctx;
+    uint32_t session_id = 0x12345678; // ID da sua frota
 
-    /* Initialize persistant time base. */
     persistent_time_init(0);
 
-    enum qerr err = uwb_stack_init(&uwbmac_ctx);
-    if (err != QERR_SUCCESS)
-    {
-        QLOGE("Failed to init UWB stack.");
+    // 1. Inicializa a Stack UWB
+    if (uwb_stack_init(&uwbmac_ctx) != QERR_SUCCESS) {
+        QLOGE("Erro ao iniciar stack UWB");
         return;
     }
 
-    uint8_t retry_count = 3;
-    do
-    {
-        err = uwbmac_get_device_info(uwbmac_ctx, &device_info);
-        if (err != QERR_SUCCESS)
-            QLOGW("Retrying... Attempts left: %d", retry_count - 1);
-    } while ((err != QERR_SUCCESS) && --retry_count);
-
-    uwb_stack_deinit(uwbmac_ctx);
-
-    if (err != QERR_SUCCESS)
-    {
-        QLOGE("Failed to get device info.");
+    // 2. Abre o Helper FiRa (usando o scheduler padrão 'fbs')
+    if (fira_helper_open(&fira_ctx, uwbmac_ctx, anticollision_ntf_cb, "fbs", 0, NULL) != QERR_SUCCESS) {
+        QLOGE("Erro ao abrir Fira Helper");
         return;
     }
 
-    snprintf(buf[0], BUFFER_SIZE, "Qorvo Device ID = 0x%08lx", device_info.dev_id);
-    snprintf(buf[1], BUFFER_SIZE, "Qorvo Lot ID = 0x%08lx%08lx", (uint32_t)(device_info.lot_id >> 32), (uint32_t)device_info.lot_id);
-    snprintf(buf[2], BUFFER_SIZE, "Qorvo Part ID = 0x%08lx", device_info.part_id);
-    snprintf(buf[3], BUFFER_SIZE, "Qorvo SoC ID = %08lx%08lx%08lx", (uint32_t)(device_info.lot_id >> 32), (uint32_t)device_info.lot_id, device_info.part_id);
+    // 3. Inicializa a Sessão FiRa
+    struct fbs_session_init_rsp rsp;
+    fira_helper_init_session(&fira_ctx, session_id, QUWBS_FBS_SESSION_TYPE_RANGING_NO_IN_BAND_DATA, &rsp);
 
-    QLOGI("Anticollision Application Started!");
+    // 4. Configuração do Caminhão (Controller + Initiator)
+    fira_helper_set_session_device_type(&fira_ctx, session_id, QUWBS_FBS_DEVICE_TYPE_CONTROLLER);
+    fira_helper_set_session_device_role(&fira_ctx, session_id, QUWBS_FBS_DEVICE_ROLE_INITIATOR);
+    
+    // DS-TWR (Double-Sided) é o valor 2 no FiRa padrão para máxima precisão
+    fira_helper_set_session_ranging_round_usage(&fira_ctx, session_id, 2); 
+    fira_helper_set_session_channel_number(&fira_ctx, session_id, 9);
+    fira_helper_set_session_short_address(&fira_ctx, session_id, 0x0001); // ID deste caminhão
+
+    // Define para quem perguntar a distância (Ex: caminhão 0x0002)
+    uint16_t target_addr = 0x0002;
+    fira_helper_set_session_destination_short_addresses(&fira_ctx, session_id, 1, &target_addr);
+
+    // 5. Inicia o Ranging automático
+    fira_helper_start_session(&fira_ctx, session_id);
+
+    QLOGI("Sistema Anti-colisao Ativo - Caminhao 0x0001");
 
     while (1)
     {
-        for (int i = 0; i < 4; i++)
-        {
-            QLOGI("%s", buf[i]);
-        }
+        // O rádio trabalha em background via interrupção.
+        // O loop principal pode ser usado para outras lógicas do caminhão.
         qtime_msleep_yield(1000);
     }
 }
@@ -141,3 +163,11 @@ error_e anticollision_init(void)
 
     return _NO_ERR;
 }
+
+// static void uwb_stack_deinit(struct uwbmac_context *uwbmac_ctx)
+// {
+//     uwbmac_exit(uwbmac_ctx);
+//     llhw_deinit();
+//     l1_config_deinit();
+//     qplatform_deinit();
+// }
