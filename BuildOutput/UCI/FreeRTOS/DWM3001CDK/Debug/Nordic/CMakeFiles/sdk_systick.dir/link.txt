@@ -1,0 +1,2 @@
+C:\PROGRA~2\GNUARM~1\102021~1.10\bin\ARM-NO~2.EXE qc libsdk_systick.a CMakeFiles/sdk_systick.dir/SDK_17_1_0/modules/nrfx/drivers/src/nrfx_systick.c.obj
+C:\PROGRA~2\GNUARM~1\102021~1.10\bin\AR17F9~1.EXE libsdk_systick.a

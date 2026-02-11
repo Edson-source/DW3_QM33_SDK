@@ -1,0 +1,2 @@
+C:\PROGRA~2\GNUARM~1\102021~1.10\bin\ARM-NO~2.EXE qc libProjectDefinition.a CMakeFiles/ProjectDefinition.dir/ProjectName.c.obj CMakeFiles/ProjectDefinition.dir/__/isr_hs.c.obj
+C:\PROGRA~2\GNUARM~1\102021~1.10\bin\AR17F9~1.EXE libProjectDefinition.a

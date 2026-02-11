@@ -1,0 +1,2 @@
+C:\PROGRA~2\GNUARM~1\102021~1.10\bin\ARM-NO~2.EXE qc libuci.a CMakeFiles/uci.dir/task_uci/task_uci.c.obj CMakeFiles/uci.dir/uci_transport/src/uci_transport.c.obj CMakeFiles/uci.dir/uci_parser.c.obj CMakeFiles/uci.dir/uwbmac_helper/src/uwbmac_helper_dw3000.c.obj
+C:\PROGRA~2\GNUARM~1\102021~1.10\bin\AR17F9~1.EXE libuci.a

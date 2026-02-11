@@ -1,0 +1,2 @@
+C:\PROGRA~2\GNUARM~1\102021~1.10\bin\ARM-NO~2.EXE qc libqplatform_deca_compat.a CMakeFiles/qplatform_deca_compat.dir/qm33_qhal_common/src/qplatform_deca_impl.c.obj
+C:\PROGRA~2\GNUARM~1\102021~1.10\bin\AR17F9~1.EXE libqplatform_deca_compat.a
