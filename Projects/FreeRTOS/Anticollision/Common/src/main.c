@@ -42,6 +42,7 @@ int main(void)
     error_e err = anticollision_init();
     if (err != _NO_ERR)
     {
+        QLOGE("Falha fatal: Não foi possível inicializar o sistema de anticolisão");
         error_handler(1, err);
     }
 

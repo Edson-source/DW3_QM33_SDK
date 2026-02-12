@@ -1,5 +1,5 @@
 {
-    "example": "CLI",
+    "example": "Anticollision",
     "board": "DWM3001CDK",
     "cpu": "nrf52833",
     "build": "Debug",
