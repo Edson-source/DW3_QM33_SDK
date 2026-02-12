@@ -415,5 +415,6 @@ There is wide variety of tools which can be used to flash the target. Below is a
      ```
 
 3. Upon successful completion of the script, the device is ready for use.
-#   D W 3 _ Q M 3 3 _ S D K  
+#   D W 3 _ Q M 3 3 _ S D K 
+ 
  
