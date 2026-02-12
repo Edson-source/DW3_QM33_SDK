@@ -9,7 +9,8 @@
 		"files.associations": {
 			"*.h": "c",
 			"*.c": "c"
-		},
+      },
+      "memory-view.showMemoryPanel": false,
 	},
 	"extensions": {
 		"recommendations": [

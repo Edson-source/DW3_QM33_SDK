@@ -172,7 +172,7 @@
             "command": "extension.commandvariable.pickStringRemember",
             "args": {
                 "key": "example_type",
-                "options": ["UCI", "CLI", "QANI", "HelloWorld"],
+                "options": ["UCI", "CLI", "QANI", "HelloWorld", "Anticollision"],
                 "default": "UCI",
                 "description": "Choose a example type"
             }

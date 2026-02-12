@@ -14,15 +14,14 @@
 #include "qthread.h"
 #include "qmalloc.h"
 #include "qlog.h"
-
+#include "qble.h"
 #include "deca_error.h"
 #include "qplatform.h"
 #include "llhw.h"
 #include "uwbmac/uwbmac.h"
 #include "persistent_time.h"
-
-#include "uwbmac/fira_helper.h" // Helper principal
-#include "quwbs/fbs/defs.h"    // Onde moram as constantes que você enviou
+#include "uwbmac/fira_helper.h"
+#include "quwbs/fbs/defs.h"
 
 #include <stdio.h>
 
@@ -123,7 +122,7 @@ static void anticollision_task(void *arg)
     fira_helper_set_session_short_address(&fira_ctx, session_id, 0x0001); // ID deste caminhão
 
     // Define para quem perguntar a distância (Ex: caminhão 0x0002)
-    uint16_t target_addr = 0x0002;
+    uint16_t target_addr = 0x0002; // ID do outro caminhão
     fira_helper_set_session_destination_short_addresses(&fira_ctx, session_id, 1, &target_addr);
 
     // 5. Inicia o Ranging automático
