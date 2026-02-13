@@ -20,6 +20,9 @@
 #include "log_processing.h"
 #endif
 
+// extern void ble_init(char *gap_name);
+// extern void ble_scan_start(void);
+
 int main(void)
 {
     handle_cpu_protect();
@@ -39,6 +42,18 @@ int main(void)
     create_log_processing_task();
 #endif
 
+    // --- ADIÇÃO: GERAR NOME ÚNICO E LIGAR BLE ---
+    char gap_name[16];
+    uint16_t meu_id = (uint16_t)(NRF_FICR->DEVICEADDR[0] & 0xFFFF);
+    sprintf(gap_name, "FROTA_%04X", meu_id);
+    
+    // Inicializa a pilha Bluetooth com o nome FROTA_XXXX
+   //  ble_init(gap_name);
+    
+    // Inicia o scanner para procurar outros caminhões
+   //  ble_scan_start(); 
+    // --------------------------------------------
+    
     error_e err = anticollision_init();
     if (err != _NO_ERR)
     {

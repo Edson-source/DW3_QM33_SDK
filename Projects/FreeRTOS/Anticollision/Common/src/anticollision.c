@@ -22,20 +22,22 @@
 #include "persistent_time.h"
 #include "uwbmac/fira_helper.h"
 #include "quwbs/fbs/defs.h"
+#include "nrfx_wdt.h"
 
 #include <stdio.h>
 
 
 // 1. DEFINIÇÕES DE SEGURANÇA E STACK
-#define RANGING_TASK_STACK_SIZE    1024
-#define CLEANUP_TASK_STACK_SIZE    512 // Stack um pouco maior para segurança do QLOG
-#define ALERT_DISTANCE_CM          3000 // Distância de alerta de colisão (30 metros) 
-#define MAX_VIZINHOS               10   // Capacidade da lista
-#define VIZINHO_TIMEOUT_MS         15000 
-#define FAXINA_INTERVALO_MS        5000  
+#define RANGING_TASK_STACK_SIZE 2048
+#define CLEANUP_TASK_STACK_SIZE 1024  // Stack um pouco maior para segurança do QLOG
+#define ALERT_DISTANCE_CM       3000 // Distância de alerta de colisão (30 metros)
+#define MAX_VIZINHOS            10   // Capacidade da lista
+#define VIZINHO_TIMEOUT_MS      15000
+#define FAXINA_INTERVALO_MS     5000
 
 // 2. DECLARAÇÃO DA ESTRUTURA E LISTA (Acessível via extern no ble.c)
-typedef struct {
+typedef struct
+{
     uint16_t endereco;
     uint32_t ultima_vez_visto;
     bool ativo;
@@ -80,23 +82,29 @@ exit:
 }
 
 // --- FUNÇÃO AUXILIAR PARA O BLE.C ---
-void anticollision_add_neighbor(uint16_t addr) {
+void anticollision_add_neighbor(uint16_t addr)
+{
     uint32_t agora_ms = (uint32_t)(qtime_get_uptime_us() / 1000);
     int slot_vazio = -1;
 
-    for (int i = 0; i < MAX_VIZINHOS; i++) {
-        if (lista_vizinhos[i].ativo && lista_vizinhos[i].endereco == addr) {
+    for (int i = 0; i < MAX_VIZINHOS; i++)
+    {
+        if (lista_vizinhos[i].ativo && lista_vizinhos[i].endereco == addr)
+        {
             lista_vizinhos[i].ultima_vez_visto = agora_ms;
             return;
         }
-        if (!lista_vizinhos[i].ativo && slot_vazio == -1) slot_vazio = i;
+        if (!lista_vizinhos[i].ativo && slot_vazio == -1)
+            slot_vazio = i;
     }
 
-    if (slot_vazio != -1) {
-        struct controlee_parameters cp = { .address = addr };
+    if (slot_vazio != -1)
+    {
+        struct controlee_parameters cp = {.address = addr};
         // Comando FiRa para adicionar o novo caminhão ao rádio dinamicamente
         int ret = fira_helper_add_controlee(&fira_ctx, session_id, &cp);
-        if (ret >= 0) {
+        if (ret >= 0)
+        {
             lista_vizinhos[slot_vazio].endereco = addr;
             lista_vizinhos[slot_vazio].ultima_vez_visto = agora_ms;
             lista_vizinhos[slot_vazio].ativo = true;
@@ -134,14 +142,18 @@ static void anticollision_ntf_cb(enum fira_helper_cb_type cb_type, const void *c
     }
 }
 
-static void anticollision_task(void *arg) {
+static void anticollision_task(void *arg)
+{
+   
     persistent_time_init(0);
-    if (uwb_stack_init(&uwbmac_ctx) != QERR_SUCCESS) {
+    if (uwb_stack_init(&uwbmac_ctx) != QERR_SUCCESS)
+    {
         QLOGE("Erro ao iniciar stack UWB");
         return;
     }
 
-    if (fira_helper_open(&fira_ctx, uwbmac_ctx, anticollision_ntf_cb, "fbs", 0, NULL) != QERR_SUCCESS) {
+    if (fira_helper_open(&fira_ctx, uwbmac_ctx, anticollision_ntf_cb, "fbs", 0, NULL) != QERR_SUCCESS)
+    {
         QLOGE("Erro ao abrir Fira Helper");
         return;
     }
@@ -150,13 +162,13 @@ static void anticollision_task(void *arg) {
     fira_helper_init_session(&fira_ctx, session_id, QUWBS_FBS_SESSION_TYPE_RANGING_NO_IN_BAND_DATA, &rsp);
     fira_helper_set_session_device_type(&fira_ctx, session_id, QUWBS_FBS_DEVICE_TYPE_CONTROLLER);
     fira_helper_set_session_device_role(&fira_ctx, session_id, QUWBS_FBS_DEVICE_ROLE_INITIATOR);
-    
+
     // ATENÇÃO: Habilitar modo Multi-Node para aceitar vários caminhões
     fira_helper_set_session_multi_node_mode(&fira_ctx, session_id, FBS_MULTI_NODE_MODE_ONE_TO_MANY);
-    
+
     fira_helper_set_session_ranging_round_usage(&fira_ctx, session_id, 2);
     fira_helper_set_session_channel_number(&fira_ctx, session_id, 9);
-    
+
     // Pegamos o ID dinâmico do chip (FICR) como endereço UWB
     uint16_t meu_id = (uint16_t)(NRF_FICR->DEVICEADDR[0] & 0xFFFF);
     fira_helper_set_session_short_address(&fira_ctx, session_id, meu_id);
@@ -166,13 +178,19 @@ static void anticollision_task(void *arg) {
     fira_helper_start_session(&fira_ctx, session_id);
     QLOGI("Sistema Anti-colisao Ativo. ID: 0x%04X", meu_id);
 
-    while (1) { qtime_msleep_yield(1000); }
+    while (1)
+    {
+        nrfx_wdt_feed();
+        qtime_msleep_yield(100);
+    }
 }
 
 static void anticollision_cleanup_task(void *arg)
 {
     while (1)
     {
+        QLOGI("Task cleanup ativa, dormindo por 5 segundos...");
+      
         // Dorme por 5 segundos
         qtime_msleep_yield(FAXINA_INTERVALO_MS);
 
@@ -207,12 +225,15 @@ static void anticollision_cleanup_task(void *arg)
  * @brief Inicializa o sistema de anticolisão e a limpeza de vizinhos.
  * @return error_e status da inicialização.
  */
-error_e anticollision_init(void) {
+error_e anticollision_init(void)
+{
+    QLOGI("Iniciando UWB agora...");
     // Alocação segura com verificação de NULL
     void *ranging_stack = qmalloc(RANGING_TASK_STACK_SIZE);
     void *cleanup_stack = qmalloc(CLEANUP_TASK_STACK_SIZE);
 
-    if (!ranging_stack || !cleanup_stack) {
+    if (!ranging_stack || !cleanup_stack)
+    {
         QLOGE("FALHA DE MEMORIA: Nao foi possivel alocar as Stacks!");
         return _ERR_Cannot_Alloc_Memory;
     }
