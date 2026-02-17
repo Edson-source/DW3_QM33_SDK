@@ -21,12 +21,12 @@ extern "C" {
 extern const app_definition_t idle_app[];
 
 /* UWB config. */
-#define APP_DEFAULT_CHANNEL        9
-#define APP_DEFAULT_TXPREAMBLENGTH DWT_PLEN_64
+#define APP_DEFAULT_CHANNEL        5
+#define APP_DEFAULT_TXPREAMBLENGTH DWT_PLEN_1024
 #define APP_DEFAULT_RXPAC          DWT_PAC8
 #define APP_DEFAULT_PCODE          10
 #define APP_DEFAULT_NSSFD          DWT_SFD_IEEE_4Z
-#define APP_DEFAULT_DATARATE       DWT_BR_6M8
+#define APP_DEFAULT_DATARATE       DWT_BR_850K
 #define APP_DEFAULT_PHRMODE        DWT_PHRMODE_STD
 #define APP_DEFAULT_PHRRATE        DWT_PHRRATE_STD
 #define APP_DEFAULT_SFDTO          (64 + 1 + 8 - 8)
