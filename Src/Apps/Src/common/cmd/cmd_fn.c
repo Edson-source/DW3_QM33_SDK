@@ -141,8 +141,35 @@ REG_FN(f_diag)
     /* Support only 0 and 1 as input parameters. */
     else if (val == 0 || val == 1)
     {
-        /* Set diagnostic status. */
+        /* Set diagnostic status only. */
         fira_params->session.enable_diagnostics = (bool)val;
+    }
+    else
+    {
+        diag_printf("Status value %d is not supported.\r\n", val);
+        return CMD_FN_RET_KO;
+    }
+
+    return (CMD_FN_RET_OK);
+}
+
+REG_FN(f_rssi)
+{
+    uint8_t n = 0;
+    int param_val = 0;
+    char cmd[9];
+    fira_param_t *fira_params = get_fira_config();
+
+    n = sscanf(text, "%9s %d", cmd, &param_val);
+
+    if (n != 2)
+    {
+        diag_printf("RSSI: %d \r\n", fira_params->session.report_rssi);
+    }
+    /* Support only 0 and 1 as input parameters. */
+    else if (val == 0 || val == 1)
+    {
+        /* Set RSSI report status. */
         fira_params->session.report_rssi = (bool)val;
     }
     else
@@ -765,6 +792,7 @@ const char COMMENT_SAVE[] = {"Saves the configuration and the default app to the
 const char COMMENT_HELP[] = {"Displays the help information.\r\nUsage: \"HELP\" or \"HELP <CMD>\", <CMD> is the command from the list, e.g. \"HELP SAVE\"."};
 const char COMMENT_RESTORE[] = {"Restores the default configuration, both UWB and System."};
 const char COMMENT_DIAG[] = {"Enables diagnostic mode to display complementary information during ranging.\r\nUsage: \"DIAG <DEC>\" (0:OFF, 1:ON)"};
+const char COMMENT_RSSI[] = {"Enables RSSI (Received Signal Strength Indicator) reporting during ranging.\r\nUsage: \"RSSI <DEC>\" (0:OFF, 1:ON)"};
 const char COMMENT_THREAD[] = {"Displays maximum stack usage per thread and total heap usage"};
 const char COMMENT_DECAID[] = {"Displays UWB chip information"};
 const char COMMENT_SETAPP[] = {"Sets the default application to be run after power cycle. Possible arguments: INITF, RESPF, LISTENER, NONE."};
@@ -782,6 +810,7 @@ const struct command_s known_commands_anytime_all[] __attribute__((section(".kno
 const struct command_s known_commands_service_all[] __attribute__((section(".known_commands_service"))) = {
     {"RESTORE", mIDLE, f_restore, COMMENT_RESTORE},
     {"DIAG", mIDLE, f_diag, COMMENT_DIAG},
+    {"RSSI", mIDLE, f_rssi, COMMENT_RSSI},
 #ifdef LISTENER_ENABLED
     {"LCFG", mIDLE, f_listener_cfg, COMMENT_LISTENER_CFG},
 #endif

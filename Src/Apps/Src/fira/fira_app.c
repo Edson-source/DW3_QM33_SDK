@@ -784,6 +784,13 @@ static char *fira_range_diagnostics_ntf_frame_status_to_string(uint8_t frame_sta
     return result;
 }
 
+#define QTD_LEITURAS_DISTANCE 30
+bool distance_media_liberada = 0;
+int16_t distance_leituras[QTD_LEITURAS_DISTANCE];
+int8_t distance_i_leitura = 0;
+int32_t distance_soma = 0;
+float distance_media = 0;
+
 static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *results, void *user_data)
 {
     int len = 0;
@@ -808,6 +815,31 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
         if (rm->status == 0)
         {
             len += snprintf(&str_result->str[len], str_result->len - len, ", distance[cm]=%d", (int)rm->distance_cm);
+
+            if (!distance_media_liberada)
+            {
+                distance_leituras[distance_i_leitura] = rm->distance_cm;
+                distance_soma += distance_leituras[distance_i_leitura];
+            }
+            else
+            {
+                distance_soma -= distance_leituras[distance_i_leitura];
+                distance_leituras[distance_i_leitura] = rm->distance_cm;
+                distance_soma += distance_leituras[distance_i_leitura];
+            }
+
+            if (++distance_i_leitura >= QTD_LEITURAS_DISTANCE)
+            {
+                distance_i_leitura = 0;
+                distance_media_liberada = 1;
+            }
+
+            // Analisa medições
+            if (distance_media_liberada)
+                distance_media = (float)distance_soma / QTD_LEITURAS_DISTANCE;
+
+            len += snprintf(&str_result->str[len], str_result->len - len, ", media[cm]=%d", (int)distance_media);
+
 
             if (rm->local_aoa_measurements[0].aoa_fom_100 > 0)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", loc_az_pdoa=%0.2f, loc_az=%0.2f", convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].pdoa_2pi), convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].aoa_2pi));
