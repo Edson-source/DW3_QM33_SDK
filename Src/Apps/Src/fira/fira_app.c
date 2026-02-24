@@ -784,17 +784,32 @@ static char *fira_range_diagnostics_ntf_frame_status_to_string(uint8_t frame_sta
     return result;
 }
 
+#define QTD_LEITURAS_DISTANCE 30
+bool distance_media_liberada = 0;
+int16_t distance_leituras[QTD_LEITURAS_DISTANCE];
+int8_t distance_i_leitura = 0;
+int32_t distance_soma = 0;
+float distance_media = 0;
+
 static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *results, void *user_data)
 {
     int len = 0;
     struct string_measurement *str_result = (struct string_measurement *)user_data;
     struct fira_twr_measurements *rm;
+    static uint32_t total_packets = 0;
+    static uint32_t total_success = 0;
+    static uint32_t total_failed = 0;
+    static uint32_t last_sequence = 0;
+    static uint32_t lost_packets = 0;
+    float per = 0.0f;
+    total_packets++;
 
     len += snprintf(&str_result->str[len], str_result->len, "SESSION_INFO_NTF: ");
     len += snprintf(&str_result->str[len], str_result->len - len, "{session_handle=%" PRIu32 "", results->info->session_handle);
     len += snprintf(&str_result->str[len], str_result->len - len, ", sequence_number=%" PRIu32 "", results->info->sequence_number);
     len += snprintf(&str_result->str[len], str_result->len - len, ", block_index=%" PRIu32 "", results->info->block_index);
     len += snprintf(&str_result->str[len], str_result->len - len, ", n_measurements=%d", results->n_measurements);
+
 
     for (int i = 0; i < results->n_measurements; i++)
     {
@@ -804,10 +819,53 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
         rm = (struct fira_twr_measurements *)(&results->measurements[i]);
 
         len += snprintf(&str_result->str[len], str_result->len - len, "\r\n\r [mac_address=0x%04x, status=\"%s\"", rm->short_addr, fira_session_info_ntf_twr_status_to_string(rm->status));
+        if (results->info->sequence_number != last_sequence + 1 && last_sequence != 0)
+        {
+            lost_packets += (results->info->sequence_number - last_sequence - 1);
+        }
+
+        last_sequence = results->info->sequence_number;
+
+        if (rm->status == QUWBS_FBS_STATUS_RANGING_SUCCESS)
+        {
+            total_success++;
+        }
+        else
+            total_failed++;
+
+        if ((total_success + total_failed) > 0)
+            per = (float)total_failed / (total_success + total_failed) * 100.0f;
+
+        len += snprintf(&str_result->str[len], str_result->len - len, ", PER=%.2f%%", per);
 
         if (rm->status == 0)
         {
             len += snprintf(&str_result->str[len], str_result->len - len, ", distance[cm]=%d", (int)rm->distance_cm);
+
+            if (!distance_media_liberada)
+            {
+                distance_leituras[distance_i_leitura] = rm->distance_cm;
+                distance_soma += distance_leituras[distance_i_leitura];
+            }
+            else
+            {
+                distance_soma -= distance_leituras[distance_i_leitura];
+                distance_leituras[distance_i_leitura] = rm->distance_cm;
+                distance_soma += distance_leituras[distance_i_leitura];
+            }
+
+            if (++distance_i_leitura >= QTD_LEITURAS_DISTANCE)
+            {
+                distance_i_leitura = 0;
+                distance_media_liberada = 1;
+            }
+
+            // Analisa medições
+            if (distance_media_liberada)
+                distance_media = (float)distance_soma / QTD_LEITURAS_DISTANCE;
+
+            len += snprintf(&str_result->str[len], str_result->len - len, ", media[cm]=%d", (int)distance_media);
+
 
             if (rm->local_aoa_measurements[0].aoa_fom_100 > 0)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", loc_az_pdoa=%0.2f, loc_az=%0.2f", convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].pdoa_2pi), convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].aoa_2pi));
