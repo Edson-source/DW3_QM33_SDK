@@ -790,33 +790,25 @@ int16_t distance_leituras[QTD_LEITURAS_DISTANCE];
 int8_t distance_i_leitura = 0;
 int32_t distance_soma = 0;
 float distance_media = 0;
+uint32_t total_success = 0;
+float per = 0.0f;
 
 #define QTD_LEITURA_PER 100
-static uint8_t per_leitura[QTD_LEITURA_PER] = {0};
-static uint16_t per_index = 0;
-static uint16_t per_count = 0;
-static uint16_t janela_perda = 0;
-static uint32_t ult_num_seq = 0;
-static float per = 0.0f;
-static bool seq_inicializada = false;
-
+uint16_t recebido_soma = 0;
+uint16_t transmitido_soma = 0;
 static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *results, void *user_data)
 {
     int len = 0;
     struct string_measurement *str_result = (struct string_measurement *)user_data;
-
     const struct fira_twr_measurements *rm;
-
     len += snprintf(&str_result->str[len], str_result->len, "SESSION_INFO_NTF: ");
-
     len += snprintf(&str_result->str[len], str_result->len - len, "{session_handle=%" PRIu32, results->info->session_handle);
-
     len += snprintf(&str_result->str[len], str_result->len - len, ", sequence_number=%" PRIu32, results->info->sequence_number);
-
     len += snprintf(&str_result->str[len], str_result->len - len, ", block_index=%" PRIu32, results->info->block_index);
-
     len += snprintf(&str_result->str[len], str_result->len - len, ", n_measurements=%d", results->n_measurements);
-
+    /* ============================= */
+    /* ===== PRINT MEASUREMENTS ==== */
+    /* ============================= */
     for (int i = 0; i < results->n_measurements; i++)
     {
         if (i > 0)
@@ -825,75 +817,38 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
         rm = &results->measurements[i];
 
         /* ============================= */
-        /* ===== PER por sequencia ======= */
+        /* ======== PER JANELA ========= */
         /* ============================= */
 
-        uint32_t seq_atual = results->info->sequence_number;
-
-        if (!seq_inicializada)
+        // Atualiza os contadores de transmitidos e recebidos com base no status da medição atual
+        if (rm->status == QUWBS_FBS_STATUS_RANGING_SUCCESS)
         {
-            ult_num_seq = seq_atual;
-            seq_inicializada = true;
+            recebido_soma++;
+            transmitido_soma++;
         }
         else
         {
-            uint32_t seq_experada = ult_num_seq + 1;
-
-            if (seq_atual > seq_experada)
-            {
-                uint32_t pacotes_perdido = seq_atual - seq_experada;
-
-                for (uint32_t l = 0; l < pacotes_perdido; l++)
-                {
-                    // Remove antigo se janela cheia
-                    if (per_count == QTD_LEITURA_PER)
-                    {
-                        if (per_leitura[per_index] == 1)
-                            janela_perda--;
-                    }
-                    else
-                    {
-                        per_count++;
-                    }
-
-                    per_leitura[per_index] = 1;
-                    janela_perda++;
-
-                    per_index = (per_index + 1) % QTD_LEITURA_PER;
-                }
-            }
+            transmitido_soma++;
         }
-
-        ult_num_seq = seq_atual;
-
-        // Agora processa o pacote atual
-        uint8_t is_loss = (rm->status != QUWBS_FBS_STATUS_RANGING_SUCCESS);
-
-        // Remove antigo se necessário
-        if (per_count == QTD_LEITURA_PER)
+        // Atualiza o PER a cada nova medição, considerando apenas as últimas QTD_LEITURA_PER transmissões
+        if (transmitido_soma > 0)
         {
-            if (per_leitura[per_index] == 1)
-                janela_perda--;
+            per = (1 - ((float)recebido_soma / (float)transmitido_soma)) * 100.0f;
         }
         else
         {
-            per_count++;
+            per = 0.0f;
         }
-
-        per_leitura[per_index] = is_loss;
-        if (is_loss)
-            janela_perda++;
-
-        per_index = (per_index + 1) % QTD_LEITURA_PER;
-
-        per = ((float)janela_perda / (float)per_count) * 100.0f;
-
-        len += snprintf(&str_result->str[len], str_result->len - len, "\r\n\r [mac_address=0x%04x, status=\"%s\", PER=%.2f%%", rm->short_addr, fira_session_info_ntf_twr_status_to_string(rm->status), per);
-
+        // Zera os contadores e somas quando atingir o tamanho da janela
+        if (transmitido_soma >= QTD_LEITURA_PER)
+        {
+            recebido_soma = 0;
+            transmitido_soma = 0;
+        }
+        len += snprintf(&str_result->str[len], str_result->len - len, "\r\n\r [mac_address=0x%04x, status=\"%s\", PER=%.4f", rm->short_addr, fira_session_info_ntf_twr_status_to_string(rm->status), per);
         if (rm->status == QUWBS_FBS_STATUS_RANGING_SUCCESS)
         {
             len += snprintf(&str_result->str[len], str_result->len - len, ", distance[cm]=%d", (int)rm->distance_cm);
-
             if (!distance_media_liberada)
             {
                 distance_leituras[distance_i_leitura] = rm->distance_cm;
@@ -905,39 +860,28 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
                 distance_leituras[distance_i_leitura] = rm->distance_cm;
                 distance_soma += distance_leituras[distance_i_leitura];
             }
-
             if (++distance_i_leitura >= QTD_LEITURAS_DISTANCE)
             {
                 distance_i_leitura = 0;
                 distance_media_liberada = 1;
             }
-
             if (distance_media_liberada)
                 distance_media = (float)distance_soma / QTD_LEITURAS_DISTANCE;
-
             len += snprintf(&str_result->str[len], str_result->len - len, ", media[cm]=%d", (int)distance_media);
-
             if (rm->local_aoa_measurements[0].aoa_fom_100 > 0)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", loc_az_pdoa=%0.2f, loc_az=%0.2f", convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].pdoa_2pi), convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].aoa_2pi));
-
             if (rm->local_aoa_measurements[1].aoa_fom_100 > 0)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", loc_el_pdoa=%0.2f, loc_el=%0.2f", convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[1].pdoa_2pi), convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[1].aoa_2pi));
-
             if (rm->remote_aoa_azimuth_fom_100 > 0)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", rmt_az=%0.2f", convert_aoa_2pi_q16_to_deg(rm->remote_aoa_azimuth_2pi));
-
             if (rm->remote_aoa_elevation_fom_100 > 0)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", rmt_el=%0.2f", convert_aoa_2pi_q16_to_deg(rm->remote_aoa_elevation_pi));
-
             if (rm->rssi)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", RSSI[dBm]=%0.1f", convert_rssi_q7_to_dbm(rm->rssi));
         }
-
         len += snprintf(&str_result->str[len], str_result->len - len, "]");
     }
-
     len += snprintf(&str_result->str[len], str_result->len - len, "}\r\n");
-
     reporter_instance.print((char *)str_result->str, len);
 }
 
