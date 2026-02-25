@@ -1,4 +1,4 @@
-# DW3 QM33 SDK #
+# DW3 QM33 SDK
 
 This readme describes how to build and run provided code and examples from QM33 SDK on the development kit. For more information about functionalities please refer to Developer Manual from SDK package.
 
