@@ -870,7 +870,7 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
         uint8_t is_loss = (rm->status != QUWBS_FBS_STATUS_RANGING_SUCCESS);
 
         // Remove antigo se necessário
-        if (per_count == janela_per_SIZE)
+        if (per_count == PER_WINDOW_SIZE)
         {
             if (janela_per[per_index] == 1)
                 janela_perda--;
@@ -884,7 +884,7 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
         if (is_loss)
             janela_perda++;
 
-        per_index = (per_index + 1) % janela_per_SIZE;
+        per_index = (per_index + 1) % PER_WINDOW_SIZE;
 
         per = ((float)janela_perda / (float)per_count) * 100.0f;
 
