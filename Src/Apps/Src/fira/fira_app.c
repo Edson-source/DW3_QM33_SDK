@@ -791,8 +791,8 @@ int8_t distance_i_leitura = 0;
 int32_t distance_soma = 0;
 float distance_media = 0;
 
-#define PER_WINDOW_SIZE 100
-static uint8_t janela_per[PER_WINDOW_SIZE] = {0};
+#define QTD_LEITURA_PER 100
+static uint8_t per_leitura[QTD_LEITURA_PER] = {0};
 static uint16_t per_index = 0;
 static uint16_t per_count = 0;
 static uint16_t janela_perda = 0;
@@ -846,9 +846,9 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
                 for (uint32_t l = 0; l < pacotes_perdido; l++)
                 {
                     // Remove antigo se janela cheia
-                    if (per_count == PER_WINDOW_SIZE)
+                    if (per_count == QTD_LEITURA_PER)
                     {
-                        if (per_window[per_index] == 1)
+                        if (per_leitura[per_index] == 1)
                             janela_perda--;
                     }
                     else
@@ -856,10 +856,10 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
                         per_count++;
                     }
 
-                    per_window[per_index] = 1;
+                    per_leitura[per_index] = 1;
                     janela_perda++;
 
-                    per_index = (per_index + 1) % PER_WINDOW_SIZE;
+                    per_index = (per_index + 1) % QTD_LEITURA_PER;
                 }
             }
         }
@@ -870,9 +870,9 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
         uint8_t is_loss = (rm->status != QUWBS_FBS_STATUS_RANGING_SUCCESS);
 
         // Remove antigo se necessário
-        if (per_count == PER_WINDOW_SIZE)
+        if (per_count == QTD_LEITURA_PER)
         {
-            if (janela_per[per_index] == 1)
+            if (per_leitura[per_index] == 1)
                 janela_perda--;
         }
         else
@@ -880,14 +880,13 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
             per_count++;
         }
 
-        janela_per[per_index] = is_loss;
+        per_leitura[per_index] = is_loss;
         if (is_loss)
             janela_perda++;
 
-        per_index = (per_index + 1) % PER_WINDOW_SIZE;
+        per_index = (per_index + 1) % QTD_LEITURA_PER;
 
         per = ((float)janela_perda / (float)per_count) * 100.0f;
-
 
         len += snprintf(&str_result->str[len], str_result->len - len, "\r\n\r [mac_address=0x%04x, status=\"%s\", PER=%.2f%%", rm->short_addr, fira_session_info_ntf_twr_status_to_string(rm->status), per);
 
