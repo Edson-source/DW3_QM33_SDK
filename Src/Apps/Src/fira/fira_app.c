@@ -791,54 +791,107 @@ int8_t distance_i_leitura = 0;
 int32_t distance_soma = 0;
 float distance_media = 0;
 
+#define PER_WINDOW_SIZE 100
+static uint8_t janela_per[PER_WINDOW_SIZE] = {0};
+static uint16_t per_index = 0;
+static uint16_t per_count = 0;
+static uint16_t janela_perda = 0;
+static uint32_t ult_num_seq = 0;
+static float per = 0.0f;
+static bool seq_inicializada = false;
+
 static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *results, void *user_data)
 {
     int len = 0;
     struct string_measurement *str_result = (struct string_measurement *)user_data;
-    struct fira_twr_measurements *rm;
-    static uint32_t total_packets = 0;
-    static uint32_t total_success = 0;
-    static uint32_t total_failed = 0;
-    static uint32_t last_sequence = 0;
-    static uint32_t lost_packets = 0;
-    float per = 0.0f;
-    total_packets++;
+
+    const struct fira_twr_measurements *rm;
 
     len += snprintf(&str_result->str[len], str_result->len, "SESSION_INFO_NTF: ");
-    len += snprintf(&str_result->str[len], str_result->len - len, "{session_handle=%" PRIu32 "", results->info->session_handle);
-    len += snprintf(&str_result->str[len], str_result->len - len, ", sequence_number=%" PRIu32 "", results->info->sequence_number);
-    len += snprintf(&str_result->str[len], str_result->len - len, ", block_index=%" PRIu32 "", results->info->block_index);
-    len += snprintf(&str_result->str[len], str_result->len - len, ", n_measurements=%d", results->n_measurements);
 
+    len += snprintf(&str_result->str[len], str_result->len - len, "{session_handle=%" PRIu32, results->info->session_handle);
+
+    len += snprintf(&str_result->str[len], str_result->len - len, ", sequence_number=%" PRIu32, results->info->sequence_number);
+
+    len += snprintf(&str_result->str[len], str_result->len - len, ", block_index=%" PRIu32, results->info->block_index);
+
+    len += snprintf(&str_result->str[len], str_result->len - len, ", n_measurements=%d", results->n_measurements);
 
     for (int i = 0; i < results->n_measurements; i++)
     {
         if (i > 0)
             len += snprintf(&str_result->str[len], str_result->len - len, ";");
 
-        rm = (struct fira_twr_measurements *)(&results->measurements[i]);
+        rm = &results->measurements[i];
 
-        len += snprintf(&str_result->str[len], str_result->len - len, "\r\n\r [mac_address=0x%04x, status=\"%s\"", rm->short_addr, fira_session_info_ntf_twr_status_to_string(rm->status));
-        if (results->info->sequence_number != last_sequence + 1 && last_sequence != 0)
+        /* ============================= */
+        /* ===== PER por sequencia ======= */
+        /* ============================= */
+
+        uint32_t seq_atual = results->info->sequence_number;
+
+        if (!seq_inicializada)
         {
-            lost_packets += (results->info->sequence_number - last_sequence - 1);
-        }
-
-        last_sequence = results->info->sequence_number;
-
-        if (rm->status == QUWBS_FBS_STATUS_RANGING_SUCCESS)
-        {
-            total_success++;
+            ult_num_seq = seq_atual;
+            seq_inicializada = true;
         }
         else
-            total_failed++;
+        {
+            uint32_t seq_experada = ult_num_seq + 1;
 
-        if ((total_success + total_failed) > 0)
-            per = (float)total_failed / (total_success + total_failed) * 100.0f;
+            if (seq_atual > seq_experada)
+            {
+                uint32_t pacotes_perdido = seq_atual - seq_experada;
 
-        len += snprintf(&str_result->str[len], str_result->len - len, ", PER=%.2f%%", per);
+                for (uint32_t l = 0; l < pacotes_perdido; l++)
+                {
+                    // Remove antigo se janela cheia
+                    if (per_count == PER_WINDOW_SIZE)
+                    {
+                        if (per_window[per_index] == 1)
+                            janela_perda--;
+                    }
+                    else
+                    {
+                        per_count++;
+                    }
 
-        if (rm->status == 0)
+                    per_window[per_index] = 1;
+                    janela_perda++;
+
+                    per_index = (per_index + 1) % PER_WINDOW_SIZE;
+                }
+            }
+        }
+
+        ult_num_seq = seq_atual;
+
+        // Agora processa o pacote atual
+        uint8_t is_loss = (rm->status != QUWBS_FBS_STATUS_RANGING_SUCCESS);
+
+        // Remove antigo se necessário
+        if (per_count == janela_per_SIZE)
+        {
+            if (janela_per[per_index] == 1)
+                janela_perda--;
+        }
+        else
+        {
+            per_count++;
+        }
+
+        janela_per[per_index] = is_loss;
+        if (is_loss)
+            janela_perda++;
+
+        per_index = (per_index + 1) % janela_per_SIZE;
+
+        per = ((float)janela_perda / (float)per_count) * 100.0f;
+
+
+        len += snprintf(&str_result->str[len], str_result->len - len, "\r\n\r [mac_address=0x%04x, status=\"%s\", PER=%.2f%%", rm->short_addr, fira_session_info_ntf_twr_status_to_string(rm->status), per);
+
+        if (rm->status == QUWBS_FBS_STATUS_RANGING_SUCCESS)
         {
             len += snprintf(&str_result->str[len], str_result->len - len, ", distance[cm]=%d", (int)rm->distance_cm);
 
@@ -860,12 +913,10 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
                 distance_media_liberada = 1;
             }
 
-            // Analisa medições
             if (distance_media_liberada)
                 distance_media = (float)distance_soma / QTD_LEITURAS_DISTANCE;
 
             len += snprintf(&str_result->str[len], str_result->len - len, ", media[cm]=%d", (int)distance_media);
-
 
             if (rm->local_aoa_measurements[0].aoa_fom_100 > 0)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", loc_az_pdoa=%0.2f, loc_az=%0.2f", convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].pdoa_2pi), convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].aoa_2pi));
@@ -882,11 +933,15 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
             if (rm->rssi)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", RSSI[dBm]=%0.1f", convert_rssi_q7_to_dbm(rm->rssi));
         }
+
         len += snprintf(&str_result->str[len], str_result->len - len, "]");
     }
+
     len += snprintf(&str_result->str[len], str_result->len - len, "}\r\n");
+
     reporter_instance.print((char *)str_result->str, len);
 }
+
 
 static void fira_range_diagnostics_ntf_cb(const struct fira_ranging_info *info, void *user_data)
 {
