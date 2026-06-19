@@ -867,7 +867,7 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
             }
             if (distance_media_liberada)
                 distance_media = (float)distance_soma / QTD_LEITURAS_DISTANCE;
-            len += snprintf(&str_result->str[len], str_result->len - len, ", media[cm]=%d", (int)distance_media);
+            len += snprintf(&str_result->str[len], str_result->len - len, ", media[cm]=%.2f", distance_media);
             if (rm->local_aoa_measurements[0].aoa_fom_100 > 0)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", loc_az_pdoa=%0.2f, loc_az=%0.2f", convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].pdoa_2pi), convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].aoa_2pi));
             if (rm->local_aoa_measurements[1].aoa_fom_100 > 0)

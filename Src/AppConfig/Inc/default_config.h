@@ -20,7 +20,20 @@ extern "C" {
 
 extern const app_definition_t idle_app[];
 
-/* UWB config. */
+// /* UWB config. Padrão de fábrica */
+// #define APP_DEFAULT_CHANNEL        9
+// #define APP_DEFAULT_TXPREAMBLENGTH DWT_PLEN_64
+// #define APP_DEFAULT_RXPAC          DWT_PAC8
+// #define APP_DEFAULT_PCODE          10
+// #define APP_DEFAULT_NSSFD          DWT_SFD_IEEE_4Z
+// #define APP_DEFAULT_DATARATE       DWT_BR_6M8
+// #define APP_DEFAULT_PHRMODE        DWT_PHRMODE_STD
+// #define APP_DEFAULT_PHRRATE        DWT_PHRRATE_STD
+// #define APP_DEFAULT_SFDTO          (64 + 1 + 8 - 8)
+// #define APP_DEFAULT_STS_MODE       DWT_STS_MODE_OFF
+// #define APP_DEFAULT_STS_LENGTH     DWT_STS_LEN_64
+
+/* UWB config. Minha analise */
 #define APP_DEFAULT_CHANNEL        5
 #define APP_DEFAULT_TXPREAMBLENGTH DWT_PLEN_1024
 #define APP_DEFAULT_RXPAC          DWT_PAC32     // Mantemos 32 (tamanho ideal para filtrar ruído pesado)
@@ -33,16 +46,16 @@ extern const app_definition_t idle_app[];
 #define APP_DEFAULT_STS_MODE       DWT_STS_MODE_OFF
 #define APP_DEFAULT_STS_LENGTH     DWT_STS_LEN_64
 
-// /* UWB config. */
-// #define APP_DEFAULT_CHANNEL        9
-// #define APP_DEFAULT_TXPREAMBLENGTH DWT_PLEN_64
-// #define APP_DEFAULT_RXPAC          DWT_PAC8
+// /* UWB config. - Otimizado para Alcance Máximo pelo gemini*/
+// #define APP_DEFAULT_CHANNEL        5
+// #define APP_DEFAULT_TXPREAMBLENGTH DWT_PLEN_4096 // Preâmbulo máximo para maior acúmulo de energia no RX
+// #define APP_DEFAULT_RXPAC          DWT_PAC32     // Ideal para preâmbulos de 1024 a 4096
 // #define APP_DEFAULT_PCODE          10
-// #define APP_DEFAULT_NSSFD          DWT_SFD_IEEE_4Z
-// #define APP_DEFAULT_DATARATE       DWT_BR_6M8
+// #define APP_DEFAULT_NSSFD          DWT_SFD_DW_16 // SFD proprietário da DW mais robusto (16 símbolos)
+// #define APP_DEFAULT_DATARATE       DWT_BR_850K
 // #define APP_DEFAULT_PHRMODE        DWT_PHRMODE_STD
 // #define APP_DEFAULT_PHRRATE        DWT_PHRRATE_STD
-// #define APP_DEFAULT_SFDTO          (64 + 1 + 8 - 8)
+// #define APP_DEFAULT_SFDTO          (4096 + 1 + 16 - 32) // Recalibrado rigorosamente
 // #define APP_DEFAULT_STS_MODE       DWT_STS_MODE_OFF
 // #define APP_DEFAULT_STS_LENGTH     DWT_STS_LEN_64
 

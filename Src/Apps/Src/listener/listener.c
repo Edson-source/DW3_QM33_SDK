@@ -56,10 +56,31 @@ static void rxtx_listener_configure(dwt_config_t *pdwCfg, uint16_t frameFilter)
     {
         error_handler(1, _ERR_INIT);
     }
+
+    /* ------------------------------------------------------------------ */
+    /* 1. Configuração de Endereçamento Dinâmico (Via CLI)                */
+    /* ------------------------------------------------------------------ */
+    dwt_setpanid(0xDECA); 
+    
+    // Puxa as configurações do terminal (CLI) carregadas na RAM
+    fira_param_t *fira_cfg = get_fira_config();
+    
+    // Usa exatamente o valor passado na flag "-addr=" do terminal
+    dwt_setaddress16(fira_cfg->short_addr); 
+
+    /* ------------------------------------------------------------------ */
+    /* 2. Habilitar o Frame Filtering (Rejeita ecos e pacotes alheios)    */
+    /* ------------------------------------------------------------------ */
+    dwt_configureframefilter(DWT_FF_ENABLE_802_15_4, DWT_FF_DATA_EN | DWT_FF_ACK_EN);
+
+    /* ------------------------------------------------------------------ */
+    /* 3. Habilitar o Auto-ACK no Hardware (Retransmissão automática)     */
+    /* ------------------------------------------------------------------ */
+    dwt_enableautoack(0, 1);
+
     /* Any delays are set by default : part of config of receiver on Tx sending. */
     dwt_setrxaftertxdelay(0);
     dwt_setrxtimeout(0);
-    dwt_configureframefilter(DWT_FF_DISABLE, 0);
 }
 
 static void listener_rssi_cal(int *rsl100, int *fsl100)
