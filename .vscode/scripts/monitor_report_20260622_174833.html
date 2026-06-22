@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UWB Measurement Report</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; text-align: center; }
+        .header h1 { font-size: 2.5em; margin-bottom: 10px; }
+        .content { padding: 40px; }
+        .capture { margin-bottom: 30px; padding: 20px; background: #f8f9fa; border-left: 4px solid #667eea; border-radius: 6px; }
+        .capture h3 { color: #667eea; margin-bottom: 15px; font-size: 1.3em; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 15px; }
+        .stat-item { background: white; padding: 15px; border-radius: 4px; text-align: center; border: 1px solid #ddd; cursor: pointer; transition: all 0.3s ease; }
+        .stat-item:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); border-color: #667eea; }
+        .stat-item.kalman-highlight { border-color: #764ba2; background: #fdfcff; }
+        .stat-item.kalman-highlight:hover { box-shadow: 0 4px 12px rgba(118, 75, 162, 0.3); }
+        .stat-label { font-size: 0.9em; color: #666; text-transform: uppercase; margin-bottom: 5px; }
+        .stat-value { font-size: 1.4em; font-weight: bold; color: #667eea; }
+        .stat-item.kalman-highlight .stat-value { color: #764ba2; }
+        .measurements { margin-top: 15px; max-height: 300px; overflow-y: auto; background: white; border: 1px solid #ddd; border-radius: 4px; padding: 10px; }
+        .measurement-row { padding: 5px; border-bottom: 1px solid #eee; font-family: monospace; font-size: 0.85em; }
+        .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #666; border-top: 1px solid #ddd; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); }
+        .modal.show { display: flex; align-items: center; justify-content: center; }
+        .modal-content { background-color: white; padding: 30px; border-radius: 8px; max-width: 600px; max-height: 80vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
+        .modal-header { font-size: 1.5em; font-weight: bold; color: #667eea; margin-bottom: 15px; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+        .modal-body { font-size: 0.95em; line-height: 1.8; }
+        .formula { background: #f8f9fa; padding: 15px; border-left: 4px solid #667eea; margin: 15px 0; font-family: monospace; font-size: 0.9em; }
+        .close-btn { float: right; font-size: 1.5em; font-weight: bold; cursor: pointer; color: #667eea; }
+        .close-btn:hover { color: #764ba2; }
+    </style>
+    <script>
+        let currentModal = null;
+        
+        function showModal(title, contentId) {
+            const modal = document.getElementById('infoModal');
+            const sourceContent = document.getElementById(contentId);
+            
+            if (!modal || !sourceContent) {
+                console.error("Erro: Elemento do modal ou conteúdo não encontrado!");
+                return;
+            }
+            
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalBody').innerHTML = sourceContent.innerHTML;
+            modal.classList.add('show');
+            currentModal = modal;
+        }
+        
+        function closeModal() {
+            if (currentModal) {
+                currentModal.classList.remove('show');
+            }
+        }
+        
+        window.onclick = function(event) {
+            const modal = document.getElementById('infoModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="infoModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModal()">&times;</span>
+            <div class="modal-header" id="modalTitle">Detalhes do Cálculo</div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>📊 UWB Measurement Report</h1>
+            <p>DWM3001CDK Live Monitor Analysis</p>
+        </div>
+        
+        <div class="content">
+
+            <div class="capture">
+                <h3>📈 Capture Window #1</h3>
+                
+                <div id="modal-min-1" style="display: none;">
+        <p><strong>Mínimo:</strong> O menor valor encontrado nos 25 blocos coletados.</p>
+        <div class="formula">
+        min = 43.00 cm (Valor #1)
+        </div>
+        <p>Este é o melhor resultado que você conseguiu durante esta janela.</p>
+        </div>
+                <div id="modal-max-1" style="display: none;">
+        <p><strong>Máximo:</strong> O maior valor encontrado nos 25 blocos coletados.</p>
+        <div class="formula">
+        max = 85.00 cm (Valor #25)
+        </div>
+        <p>Este é o pior resultado que você conseguiu durante esta janela.</p>
+        </div>
+                <div id="modal-mean-1" style="display: none;">
+        <p><strong>Média (Mean):</strong> A soma de todos os valores dividida pelo número de amostras.</p>
+        <div class="formula">
+        Σ(valores) / N = (76.00 + 74.00 + 78.00 + 66.00 + 75.00 + ...) / 25<br/>
+        = 1730.00 / 25<br/>
+        = 69.20 cm
+        </div>
+        <p>Representa o valor "típico" ou central da sua medição bruta.</p>
+        </div>
+                <div id="modal-std-1" style="display: none;">
+        <p><strong>Desvio Padrão (σ):</strong> Mede quanto os valores variam em relação à média.</p>
+        <div class="formula">
+        σ = √(Σ(xi - média)² / (N-1))
+        </div>
+        <p><strong>Passo 1:</strong> Calcular (valor - média)² para cada um:</p>
+        <div class='formula'>(76.00 - 69.20)² = 46.2400</div><div class='formula'>(74.00 - 69.20)² = 23.0400</div><div class='formula'>(78.00 - 69.20)² = 77.4400</div><div class='formula'>(66.00 - 69.20)² = 10.2400</div><div class='formula'>(75.00 - 69.20)² = 33.6400</div><p>... e mais 20 valores</p>
+        <p><strong>Passo 2:</strong> Somar todos os quadrados: 2590.0000</p>
+        <p><strong>Passo 3:</strong> Dividir por (N-1) = 24: 107.9167</p>
+        <p><strong>Passo 4:</strong> Tirar raiz quadrada: 10.3883 cm = <strong>103.88 mm</strong></p>
+        <p style="color: #667eea; font-weight: bold;">Interpretação: Cerca de 68% dos valores estão entre 58.81±10.39 = 58.81 a 79.59 cm</p>
+        </div>
+                <div id="modal-median-1" style="display: none;">
+        <p><strong>Mediana:</strong> O valor do meio quando todos estão ordenados.</p>
+        <p>Valores ordenados: 43.00, 50.00, 53.00, 54.00, 57.00, 66.00, 67.00, 69.00, 69.00, 70.00, 70.00, 71.00, 72.00, 72.00, 72.00, 73.00, 74.00, 74.00, 75.00, 76.00, 76.00, 78.00, 80.00, 84.00, 85.00</p>
+        <div class="formula">
+        Mediana = 72.00 cm
+        </div>
+        <p>50% dos valores estão abaixo da mediana, 50% acima. É resistente a valores extremos.</p>
+        </div>
+                <div id="modal-range-1" style="display: none;">
+        <p><strong>Amplitude (Range):</strong> A diferença entre o máximo e o mínimo.</p>
+        <div class="formula">
+        Range = máximo - mínimo = 85.00 - 43.00 = 42.00 cm
+        </div>
+        <p>Mostra a "largura" dos seus dados brutos. Quanto menor, mais estável a medição.</p>
+        </div>
+                <div id="modal-kalman-1" style="display: none;">
+        <p><strong>Filtro de Kalman (1D):</strong> Um algoritmo de estimação de estado projetado para mitigar o jitter (ruído de medição) inerente ao UWB, fornecendo uma leitura de distância mais suave e estável.</p>
+        <p><strong>Parâmetros configurados (Firmware C):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10 (Define a agilidade de rastreio)</li>
+            <li><strong>R (Ruído da Medição):</strong> 15.00 (Incerteza/Jitter natural do UWB)</li>
+        </ul>
+        <br/>
+        <p><strong>Ciclo Matemático do Filtro:</strong></p>
+        <div class="formula">
+        <strong>1. Previsão da Incerteza:</strong><br/>
+        &nbsp;&nbsp;&nbsp;p = p + Q<br/><br/>
+        <strong>2. Ganho de Kalman (K):</strong><br/>
+        &nbsp;&nbsp;&nbsp;K = p / (p + R)<br/>
+        &nbsp;&nbsp;&nbsp;<small><i>*Determina se confia mais na medição atual ou na estimativa anterior.</i></small><br/><br/>
+        <strong>3. Atualização do Estado (Distância Filtrada):</strong><br/>
+        &nbsp;&nbsp;&nbsp;Est = Est + K * (Medição_Bruta - Est)<br/><br/>
+        <strong>4. Atualização da Incerteza:</strong><br/>
+        &nbsp;&nbsp;&nbsp;p = (1 - K) * p
+        </div>
+        <p>A média dos valores já <strong>filtrados pelo Kalman</strong> nesta janela foi de <strong>70.99 cm</strong>.</p>
+        </div>
+
+                <div class="stats-grid">
+                    <div class="stat-item kalman-highlight" onclick="showModal('Estatísticas do Filtro de Kalman', 'modal-kalman-1')">
+                        <div class="stat-label">Kalman (Média)</div>
+                        <div class="stat-value">70.99 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Média Bruta', 'modal-mean-1')">
+                        <div class="stat-label">Raw Mean</div>
+                        <div class="stat-value">69.20 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Desvio Padrão', 'modal-std-1')">
+                        <div class="stat-label">Std Dev</div>
+                        <div class="stat-value">10.39 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Mínimo', 'modal-min-1')">
+                        <div class="stat-label">Minimum</div>
+                        <div class="stat-value">43.00 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Máximo', 'modal-max-1')">
+                        <div class="stat-label">Maximum</div>
+                        <div class="stat-value">85.00 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Amplitude', 'modal-range-1')">
+                        <div class="stat-label">Range</div>
+                        <div class="stat-value">42.00 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Mediana', 'modal-median-1')">
+                        <div class="stat-label">Median</div>
+                        <div class="stat-value">72.00 cm</div>
+                    </div>
+                </div>
+                
+                <div class="measurements">
+                    <strong>Measurements (25 blocks):</strong>
+<div class="measurement-row">[17:48:05.485] Raw: 76.00cm | Kalman: 73.57cm | RSSI: -60dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:05.685] Raw: 74.00cm | Kalman: 73.60cm | RSSI: -57dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:05.885] Raw: 78.00cm | Kalman: 73.95cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:06.086] Raw: 66.00cm | Kalman: 73.32cm | RSSI: -62dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:06.286] Raw: 75.00cm | Kalman: 73.45cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:06.485] Raw: 70.00cm | Kalman: 73.18cm | RSSI: -61dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:06.685] Raw: 84.00cm | Kalman: 74.03cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:06.885] Raw: 80.00cm | Kalman: 74.50cm | RSSI: -59dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:07.085] Raw: 85.00cm | Kalman: 75.32cm | RSSI: -64dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:07.286] Raw: 71.00cm | Kalman: 74.98cm | RSSI: -67dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:07.486] Raw: 54.00cm | Kalman: 73.34cm | RSSI: -75dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:07.686] Raw: 53.00cm | Kalman: 71.74cm | RSSI: -76dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:07.885] Raw: 50.00cm | Kalman: 70.04cm | RSSI: -78dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:08.086] Raw: 43.00cm | Kalman: 67.92cm | RSSI: -76dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:08.285] Raw: 57.00cm | Kalman: 67.06cm | RSSI: -70dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:08.486] Raw: 73.00cm | Kalman: 67.53cm | RSSI: -60dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:08.685] Raw: 69.00cm | Kalman: 67.65cm | RSSI: -60dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:08.886] Raw: 72.00cm | Kalman: 67.99cm | RSSI: -59dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:09.085] Raw: 72.00cm | Kalman: 68.30cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:09.285] Raw: 72.00cm | Kalman: 68.59cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:09.485] Raw: 70.00cm | Kalman: 68.70cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:09.686] Raw: 67.00cm | Kalman: 68.57cm | RSSI: -62dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:09.885] Raw: 74.00cm | Kalman: 68.99cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:10.086] Raw: 69.00cm | Kalman: 68.99cm | RSSI: -62dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:10.285] Raw: 76.00cm | Kalman: 69.54cm | RSSI: -58dBm | PER: 0.0%</div>
+
+                </div>
+            </div>
+
+            <div class="capture">
+                <h3>📈 Capture Window #2</h3>
+                
+                <div id="modal-min-2" style="display: none;">
+        <p><strong>Mínimo:</strong> O menor valor encontrado nos 25 blocos coletados.</p>
+        <div class="formula">
+        min = 41.00 cm (Valor #1)
+        </div>
+        <p>Este é o melhor resultado que você conseguiu durante esta janela.</p>
+        </div>
+                <div id="modal-max-2" style="display: none;">
+        <p><strong>Máximo:</strong> O maior valor encontrado nos 25 blocos coletados.</p>
+        <div class="formula">
+        max = 88.00 cm (Valor #25)
+        </div>
+        <p>Este é o pior resultado que você conseguiu durante esta janela.</p>
+        </div>
+                <div id="modal-mean-2" style="display: none;">
+        <p><strong>Média (Mean):</strong> A soma de todos os valores dividida pelo número de amostras.</p>
+        <div class="formula">
+        Σ(valores) / N = (71.00 + 83.00 + 88.00 + 79.00 + 60.00 + ...) / 25<br/>
+        = 1816.00 / 25<br/>
+        = 72.64 cm
+        </div>
+        <p>Representa o valor "típico" ou central da sua medição bruta.</p>
+        </div>
+                <div id="modal-std-2" style="display: none;">
+        <p><strong>Desvio Padrão (σ):</strong> Mede quanto os valores variam em relação à média.</p>
+        <div class="formula">
+        σ = √(Σ(xi - média)² / (N-1))
+        </div>
+        <p><strong>Passo 1:</strong> Calcular (valor - média)² para cada um:</p>
+        <div class='formula'>(71.00 - 72.64)² = 2.6896</div><div class='formula'>(83.00 - 72.64)² = 107.3296</div><div class='formula'>(88.00 - 72.64)² = 235.9296</div><div class='formula'>(79.00 - 72.64)² = 40.4496</div><div class='formula'>(60.00 - 72.64)² = 159.7696</div><p>... e mais 20 valores</p>
+        <p><strong>Passo 2:</strong> Somar todos os quadrados: 3125.7600</p>
+        <p><strong>Passo 3:</strong> Dividir por (N-1) = 24: 130.2400</p>
+        <p><strong>Passo 4:</strong> Tirar raiz quadrada: 11.4123 cm = <strong>114.12 mm</strong></p>
+        <p style="color: #667eea; font-weight: bold;">Interpretação: Cerca de 68% dos valores estão entre 61.23±11.41 = 61.23 a 84.05 cm</p>
+        </div>
+                <div id="modal-median-2" style="display: none;">
+        <p><strong>Mediana:</strong> O valor do meio quando todos estão ordenados.</p>
+        <p>Valores ordenados: 41.00, 49.00, 52.00, 60.00, 68.00, 68.00, 70.00, 71.00, 72.00, 72.00, 74.00, 75.00, 76.00, 76.00, 77.00, 77.00, 79.00, 79.00, 80.00, 81.00, 81.00, 82.00, 83.00, 85.00, 88.00</p>
+        <div class="formula">
+        Mediana = 76.00 cm
+        </div>
+        <p>50% dos valores estão abaixo da mediana, 50% acima. É resistente a valores extremos.</p>
+        </div>
+                <div id="modal-range-2" style="display: none;">
+        <p><strong>Amplitude (Range):</strong> A diferença entre o máximo e o mínimo.</p>
+        <div class="formula">
+        Range = máximo - mínimo = 88.00 - 41.00 = 47.00 cm
+        </div>
+        <p>Mostra a "largura" dos seus dados brutos. Quanto menor, mais estável a medição.</p>
+        </div>
+                <div id="modal-kalman-2" style="display: none;">
+        <p><strong>Filtro de Kalman (1D):</strong> Um algoritmo de estimação de estado projetado para mitigar o jitter (ruído de medição) inerente ao UWB, fornecendo uma leitura de distância mais suave e estável.</p>
+        <p><strong>Parâmetros configurados (Firmware C):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10 (Define a agilidade de rastreio)</li>
+            <li><strong>R (Ruído da Medição):</strong> 15.00 (Incerteza/Jitter natural do UWB)</li>
+        </ul>
+        <br/>
+        <p><strong>Ciclo Matemático do Filtro:</strong></p>
+        <div class="formula">
+        <strong>1. Previsão da Incerteza:</strong><br/>
+        &nbsp;&nbsp;&nbsp;p = p + Q<br/><br/>
+        <strong>2. Ganho de Kalman (K):</strong><br/>
+        &nbsp;&nbsp;&nbsp;K = p / (p + R)<br/>
+        &nbsp;&nbsp;&nbsp;<small><i>*Determina se confia mais na medição atual ou na estimativa anterior.</i></small><br/><br/>
+        <strong>3. Atualização do Estado (Distância Filtrada):</strong><br/>
+        &nbsp;&nbsp;&nbsp;Est = Est + K * (Medição_Bruta - Est)<br/><br/>
+        <strong>4. Atualização da Incerteza:</strong><br/>
+        &nbsp;&nbsp;&nbsp;p = (1 - K) * p
+        </div>
+        <p>A média dos valores já <strong>filtrados pelo Kalman</strong> nesta janela foi de <strong>73.50 cm</strong>.</p>
+        </div>
+
+                <div class="stats-grid">
+                    <div class="stat-item kalman-highlight" onclick="showModal('Estatísticas do Filtro de Kalman', 'modal-kalman-2')">
+                        <div class="stat-label">Kalman (Média)</div>
+                        <div class="stat-value">73.50 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Média Bruta', 'modal-mean-2')">
+                        <div class="stat-label">Raw Mean</div>
+                        <div class="stat-value">72.64 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Desvio Padrão', 'modal-std-2')">
+                        <div class="stat-label">Std Dev</div>
+                        <div class="stat-value">11.41 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Mínimo', 'modal-min-2')">
+                        <div class="stat-label">Minimum</div>
+                        <div class="stat-value">41.00 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Máximo', 'modal-max-2')">
+                        <div class="stat-label">Maximum</div>
+                        <div class="stat-value">88.00 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Amplitude', 'modal-range-2')">
+                        <div class="stat-label">Range</div>
+                        <div class="stat-value">47.00 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Mediana', 'modal-median-2')">
+                        <div class="stat-label">Median</div>
+                        <div class="stat-value">76.00 cm</div>
+                    </div>
+                </div>
+                
+                <div class="measurements">
+                    <strong>Measurements (25 blocks):</strong>
+<div class="measurement-row">[17:48:13.086] Raw: 71.00cm | Kalman: 75.50cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:13.285] Raw: 83.00cm | Kalman: 76.08cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:13.485] Raw: 88.00cm | Kalman: 77.02cm | RSSI: -57dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:13.685] Raw: 79.00cm | Kalman: 77.17cm | RSSI: -63dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:13.885] Raw: 60.00cm | Kalman: 75.83cm | RSSI: -69dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:14.086] Raw: 41.00cm | Kalman: 73.10cm | RSSI: -78dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:14.285] Raw: 49.00cm | Kalman: 71.21cm | RSSI: -78dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:14.485] Raw: 76.00cm | Kalman: 71.58cm | RSSI: -71dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:14.685] Raw: 82.00cm | Kalman: 72.40cm | RSSI: -60dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:14.885] Raw: 81.00cm | Kalman: 73.07cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:15.085] Raw: 68.00cm | Kalman: 72.68cm | RSSI: -59dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:15.285] Raw: 76.00cm | Kalman: 72.94cm | RSSI: -60dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:15.485] Raw: 72.00cm | Kalman: 72.86cm | RSSI: -60dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:15.685] Raw: 81.00cm | Kalman: 73.50cm | RSSI: -56dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:15.885] Raw: 74.00cm | Kalman: 73.54cm | RSSI: -64dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:16.085] Raw: 68.00cm | Kalman: 73.11cm | RSSI: -68dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:16.285] Raw: 52.00cm | Kalman: 71.45cm | RSSI: -69dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:16.486] Raw: 70.00cm | Kalman: 71.34cm | RSSI: -69dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:16.685] Raw: 85.00cm | Kalman: 72.41cm | RSSI: -56dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:16.885] Raw: 77.00cm | Kalman: 72.77cm | RSSI: -59dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:17.085] Raw: 80.00cm | Kalman: 73.34cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:17.285] Raw: 75.00cm | Kalman: 73.47cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:17.485] Raw: 72.00cm | Kalman: 73.35cm | RSSI: -60dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:17.685] Raw: 79.00cm | Kalman: 73.79cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:17.885] Raw: 77.00cm | Kalman: 74.05cm | RSSI: -58dBm | PER: 0.0%</div>
+
+                </div>
+            </div>
+
+            <div class="capture">
+                <h3>📈 Capture Window #3</h3>
+                
+                <div id="modal-min-3" style="display: none;">
+        <p><strong>Mínimo:</strong> O menor valor encontrado nos 25 blocos coletados.</p>
+        <div class="formula">
+        min = 35.00 cm (Valor #1)
+        </div>
+        <p>Este é o melhor resultado que você conseguiu durante esta janela.</p>
+        </div>
+                <div id="modal-max-3" style="display: none;">
+        <p><strong>Máximo:</strong> O maior valor encontrado nos 25 blocos coletados.</p>
+        <div class="formula">
+        max = 111.00 cm (Valor #25)
+        </div>
+        <p>Este é o pior resultado que você conseguiu durante esta janela.</p>
+        </div>
+                <div id="modal-mean-3" style="display: none;">
+        <p><strong>Média (Mean):</strong> A soma de todos os valores dividida pelo número de amostras.</p>
+        <div class="formula">
+        Σ(valores) / N = (81.00 + 79.00 + 79.00 + 35.00 + 53.00 + ...) / 25<br/>
+        = 1854.00 / 25<br/>
+        = 74.16 cm
+        </div>
+        <p>Representa o valor "típico" ou central da sua medição bruta.</p>
+        </div>
+                <div id="modal-std-3" style="display: none;">
+        <p><strong>Desvio Padrão (σ):</strong> Mede quanto os valores variam em relação à média.</p>
+        <div class="formula">
+        σ = √(Σ(xi - média)² / (N-1))
+        </div>
+        <p><strong>Passo 1:</strong> Calcular (valor - média)² para cada um:</p>
+        <div class='formula'>(81.00 - 74.16)² = 46.7856</div><div class='formula'>(79.00 - 74.16)² = 23.4256</div><div class='formula'>(79.00 - 74.16)² = 23.4256</div><div class='formula'>(35.00 - 74.16)² = 1533.5056</div><div class='formula'>(53.00 - 74.16)² = 447.7456</div><p>... e mais 20 valores</p>
+        <p><strong>Passo 2:</strong> Somar todos os quadrados: 4531.3600</p>
+        <p><strong>Passo 3:</strong> Dividir por (N-1) = 24: 188.8067</p>
+        <p><strong>Passo 4:</strong> Tirar raiz quadrada: 13.7407 cm = <strong>137.41 mm</strong></p>
+        <p style="color: #667eea; font-weight: bold;">Interpretação: Cerca de 68% dos valores estão entre 60.42±13.74 = 60.42 a 87.90 cm</p>
+        </div>
+                <div id="modal-median-3" style="display: none;">
+        <p><strong>Mediana:</strong> O valor do meio quando todos estão ordenados.</p>
+        <p>Valores ordenados: 35.00, 53.00, 56.00, 62.00, 66.00, 67.00, 69.00, 70.00, 72.00, 72.00, 77.00, 78.00, 78.00, 79.00, 79.00, 79.00, 79.00, 80.00, 80.00, 81.00, 82.00, 82.00, 83.00, 84.00, 111.00</p>
+        <div class="formula">
+        Mediana = 78.00 cm
+        </div>
+        <p>50% dos valores estão abaixo da mediana, 50% acima. É resistente a valores extremos.</p>
+        </div>
+                <div id="modal-range-3" style="display: none;">
+        <p><strong>Amplitude (Range):</strong> A diferença entre o máximo e o mínimo.</p>
+        <div class="formula">
+        Range = máximo - mínimo = 111.00 - 35.00 = 76.00 cm
+        </div>
+        <p>Mostra a "largura" dos seus dados brutos. Quanto menor, mais estável a medição.</p>
+        </div>
+                <div id="modal-kalman-3" style="display: none;">
+        <p><strong>Filtro de Kalman (1D):</strong> Um algoritmo de estimação de estado projetado para mitigar o jitter (ruído de medição) inerente ao UWB, fornecendo uma leitura de distância mais suave e estável.</p>
+        <p><strong>Parâmetros configurados (Firmware C):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10 (Define a agilidade de rastreio)</li>
+            <li><strong>R (Ruído da Medição):</strong> 15.00 (Incerteza/Jitter natural do UWB)</li>
+        </ul>
+        <br/>
+        <p><strong>Ciclo Matemático do Filtro:</strong></p>
+        <div class="formula">
+        <strong>1. Previsão da Incerteza:</strong><br/>
+        &nbsp;&nbsp;&nbsp;p = p + Q<br/><br/>
+        <strong>2. Ganho de Kalman (K):</strong><br/>
+        &nbsp;&nbsp;&nbsp;K = p / (p + R)<br/>
+        &nbsp;&nbsp;&nbsp;<small><i>*Determina se confia mais na medição atual ou na estimativa anterior.</i></small><br/><br/>
+        <strong>3. Atualização do Estado (Distância Filtrada):</strong><br/>
+        &nbsp;&nbsp;&nbsp;Est = Est + K * (Medição_Bruta - Est)<br/><br/>
+        <strong>4. Atualização da Incerteza:</strong><br/>
+        &nbsp;&nbsp;&nbsp;p = (1 - K) * p
+        </div>
+        <p>A média dos valores já <strong>filtrados pelo Kalman</strong> nesta janela foi de <strong>74.39 cm</strong>.</p>
+        </div>
+
+                <div class="stats-grid">
+                    <div class="stat-item kalman-highlight" onclick="showModal('Estatísticas do Filtro de Kalman', 'modal-kalman-3')">
+                        <div class="stat-label">Kalman (Média)</div>
+                        <div class="stat-value">74.39 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Média Bruta', 'modal-mean-3')">
+                        <div class="stat-label">Raw Mean</div>
+                        <div class="stat-value">74.16 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Desvio Padrão', 'modal-std-3')">
+                        <div class="stat-label">Std Dev</div>
+                        <div class="stat-value">13.74 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Mínimo', 'modal-min-3')">
+                        <div class="stat-label">Minimum</div>
+                        <div class="stat-value">35.00 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Máximo', 'modal-max-3')">
+                        <div class="stat-label">Maximum</div>
+                        <div class="stat-value">111.00 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Amplitude', 'modal-range-3')">
+                        <div class="stat-label">Range</div>
+                        <div class="stat-value">76.00 cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Mediana', 'modal-median-3')">
+                        <div class="stat-label">Median</div>
+                        <div class="stat-value">78.00 cm</div>
+                    </div>
+                </div>
+                
+                <div class="measurements">
+                    <strong>Measurements (25 blocks):</strong>
+<div class="measurement-row">[17:48:19.885] Raw: 81.00cm | Kalman: 75.61cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:20.085] Raw: 79.00cm | Kalman: 75.87cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:20.285] Raw: 79.00cm | Kalman: 76.12cm | RSSI: -61dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:20.485] Raw: 35.00cm | Kalman: 72.89cm | RSSI: -74dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:20.684] Raw: 53.00cm | Kalman: 71.34cm | RSSI: -76dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:20.885] Raw: 84.00cm | Kalman: 72.33cm | RSSI: -66dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:21.084] Raw: 80.00cm | Kalman: 72.93cm | RSSI: -56dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:21.285] Raw: 67.00cm | Kalman: 72.46cm | RSSI: -60dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:21.485] Raw: 80.00cm | Kalman: 73.06cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:21.684] Raw: 72.00cm | Kalman: 72.97cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:21.885] Raw: 78.00cm | Kalman: 73.37cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:22.084] Raw: 83.00cm | Kalman: 74.12cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:22.285] Raw: 111.00cm | Kalman: 77.01cm | RSSI: -67dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:22.485] Raw: 56.00cm | Kalman: 75.37cm | RSSI: -74dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:22.684] Raw: 62.00cm | Kalman: 74.32cm | RSSI: -67dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:22.885] Raw: 79.00cm | Kalman: 74.68cm | RSSI: -66dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:23.084] Raw: 82.00cm | Kalman: 75.26cm | RSSI: -56dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:23.285] Raw: 77.00cm | Kalman: 75.39cm | RSSI: -58dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:23.485] Raw: 78.00cm | Kalman: 75.60cm | RSSI: -62dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:23.684] Raw: 70.00cm | Kalman: 75.16cm | RSSI: -59dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:23.885] Raw: 79.00cm | Kalman: 75.46cm | RSSI: -56dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:24.084] Raw: 72.00cm | Kalman: 75.19cm | RSSI: -63dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:24.284] Raw: 66.00cm | Kalman: 74.47cm | RSSI: -64dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:24.484] Raw: 69.00cm | Kalman: 74.04cm | RSSI: -66dBm | PER: 0.0%</div>
+<div class="measurement-row">[17:48:24.684] Raw: 82.00cm | Kalman: 74.66cm | RSSI: -59dBm | PER: 0.0%</div>
+
+                </div>
+            </div>
+
+        </div>
+        
+        <div class="footer">
+            <p>Generated: 2026-06-22 17:48:33</p>
+            <p>Total Captures: 3 | Total Measurements: 443</p>
+            <p>Session Duration: 60.5 seconds</p>
+        </div>
+    </div>
+</body>
+</html>

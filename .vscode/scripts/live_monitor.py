@@ -86,6 +86,7 @@ class LiveMonitor:
         """Extract distance value from measurement string"""
         patterns = [
             r'distance\[cm\]=([\d.]+)',  # Captura em cm
+            r'distance_bruta\[cm\]=([\d.-]+)', # Captura do print atualizado do C
             r'Distance:\s*([\d.]+)\s*m', # Captura em metros
             r'X=([\d.]+)',
             r'(\d+),(-?\d+),\d+,OK'
@@ -103,6 +104,11 @@ class LiveMonitor:
                 # Retorna o valor direto em Centímetros (Removida a divisão!)
                 return val
         return None
+
+    def _extract_kalman(self, data):
+        """Extract Kalman filter distance"""
+        match = re.search(r'kalman\[cm\]=([\d.-]+)', data)
+        return float(match.group(1)) if match else None
 
     def _extract_media(self, data):
         """Extract media (average) distance"""
@@ -139,13 +145,13 @@ class LiveMonitor:
     
     def print_header(self):
         """Print clean header"""
-        print("\n" + "="*80)
+        print("\n" + "="*90)
         print("🔴 LIVE MEASUREMENT MONITOR - DWM3001CDK")
-        print("="*80)
+        print("="*90)
         print(f"Port: {self.port} | Baudrate: {self.baudrate} | Session: {self.session_start.strftime('%Y-%m-%d %H:%M:%S')}")
-        print("-"*80)
+        print("-"*90)
         print("Controls:  ',' = Capture Window  |  's' = Save Report  |  'q/ESC' = Exit")
-        print("="*80 + "\n")
+        print("="*90 + "\n")
     
     def on_key_press(self, key):
         """Handle keyboard input"""
@@ -183,11 +189,36 @@ class LiveMonitor:
             if distances:
                 stats = self._calculate_stats(distances)
                 print(f"\n📊 CAPTURED (Window #{len(self.captures)}): " +
-                      f"Min={stats['min']:.2f}m | Max={stats['max']:.2f}m | " +
+                      f"Min={stats['min']:.2f}cm | Max={stats['max']:.2f}cm | " +
                       f"σ={stats['std']:.2f}cm\n")
         
         self.capture_active = False
     
+    def _create_kalman_details(self, kalman_mean):
+        """Create detailed explanation for the Kalman Filter modal"""
+        return f"""
+        <p><strong>Filtro de Kalman (1D):</strong> Um algoritmo de estimação de estado projetado para mitigar o jitter (ruído de medição) inerente ao UWB, fornecendo uma leitura de distância mais suave e estável.</p>
+        <p><strong>Parâmetros configurados (Firmware C):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10 (Define a agilidade de rastreio)</li>
+            <li><strong>R (Ruído da Medição):</strong> 15.00 (Incerteza/Jitter natural do UWB)</li>
+        </ul>
+        <br/>
+        <p><strong>Ciclo Matemático do Filtro:</strong></p>
+        <div class="formula">
+        <strong>1. Previsão da Incerteza:</strong><br/>
+        &nbsp;&nbsp;&nbsp;p = p + Q<br/><br/>
+        <strong>2. Ganho de Kalman (K):</strong><br/>
+        &nbsp;&nbsp;&nbsp;K = p / (p + R)<br/>
+        &nbsp;&nbsp;&nbsp;<small><i>*Determina se confia mais na medição atual ou na estimativa anterior.</i></small><br/><br/>
+        <strong>3. Atualização do Estado (Distância Filtrada):</strong><br/>
+        &nbsp;&nbsp;&nbsp;Est = Est + K * (Medição_Bruta - Est)<br/><br/>
+        <strong>4. Atualização da Incerteza:</strong><br/>
+        &nbsp;&nbsp;&nbsp;p = (1 - K) * p
+        </div>
+        <p>A média dos valores já <strong>filtrados pelo Kalman</strong> nesta janela foi de <strong>{kalman_mean:.2f} cm</strong>.</p>
+        """
+
     def _create_calculation_details(self, stats):
         """Create detailed calculation explanation for modal"""
         values = stats['values']
@@ -220,7 +251,7 @@ class LiveMonitor:
         = {np.sum(values):.2f} / {n}<br/>
         = {stats['mean']:.2f} cm
         </div>
-        <p>Representa o valor "típico" ou central da sua medição.</p>
+        <p>Representa o valor "típico" ou central da sua medição bruta.</p>
         """
         
         # Std Dev explanation
@@ -264,7 +295,7 @@ class LiveMonitor:
         <div class="formula">
         Range = máximo - mínimo = {stats['max']:.2f} - {stats['min']:.2f} = {range_val:.2f} cm
         </div>
-        <p>Mostra a "largura" dos seus dados. Quanto menor, mais estável a medição.</p>
+        <p>Mostra a "largura" dos seus dados brutos. Quanto menor, mais estável a medição.</p>
         """
         
         return {
@@ -333,6 +364,7 @@ class LiveMonitor:
                             # Parse the complete section
                             timestamp = datetime.now()
                             distance = self._extract_distance(self.line_buffer)
+                            kalman = self._extract_kalman(self.line_buffer)
                             rssi = self._extract_rssi(self.line_buffer)
                             per = self._extract_per(self.line_buffer)
                             media = self._extract_media(self.line_buffer)
@@ -343,6 +375,7 @@ class LiveMonitor:
                                 measurement = {
                                     'timestamp': timestamp,
                                     'distance': distance,
+                                    'kalman': kalman,
                                     'rssi': rssi,
                                     'per': per,
                                     'media': media,
@@ -351,18 +384,14 @@ class LiveMonitor:
                                 }
                                 self.all_measurements.append(measurement)
                                 
-                                # Calculate moving average (last 25 blocks = 5 seconds)
-                                recent_distances = [m['distance'] for m in self.all_measurements[-25:] if m['distance'] is not None]
-                                moving_avg = np.mean(recent_distances) if recent_distances else None
-                                
                                 # Display on screen with block number
                                 ts = timestamp.strftime("%H:%M:%S.%f")[:-3]
                                 block_str = f"Block #{block_index}" if block_index is not None else "Block: N/A"
                                 rssi_str = f"RSSI: {rssi:6.1f} dBm" if rssi else "RSSI: N/A"
                                 per_str = f"PER: {per:5.1f}%" if per is not None else ""
-                                moving_avg_str = f"Avg5s: {moving_avg:.2f}cm" if moving_avg else ""
+                                kalman_str = f"| Kalm: {kalman:6.2f}cm" if kalman is not None else ""
                                 
-                                print(f"[{ts}] {block_str:10s} | Dist: {distance:.2f}cm | {rssi_str} | {per_str:12s} | {moving_avg_str}")
+                                print(f"[{ts}] {block_str:10s} | Dist: {distance:6.2f}cm {kalman_str} | {rssi_str} | {per_str}")
                             elif debug_count <= 5:
                                 print(f"[DEBUG] Could not parse distance from: {self.line_buffer[:80]}...")
                             
@@ -419,8 +448,11 @@ class LiveMonitor:
         .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 15px; }}
         .stat-item {{ background: white; padding: 15px; border-radius: 4px; text-align: center; border: 1px solid #ddd; cursor: pointer; transition: all 0.3s ease; }}
         .stat-item:hover {{ transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); border-color: #667eea; }}
+        .stat-item.kalman-highlight {{ border-color: #764ba2; background: #fdfcff; }}
+        .stat-item.kalman-highlight:hover {{ box-shadow: 0 4px 12px rgba(118, 75, 162, 0.3); }}
         .stat-label {{ font-size: 0.9em; color: #666; text-transform: uppercase; margin-bottom: 5px; }}
         .stat-value {{ font-size: 1.4em; font-weight: bold; color: #667eea; }}
+        .stat-item.kalman-highlight .stat-value {{ color: #764ba2; }}
         .measurements {{ margin-top: 15px; max-height: 300px; overflow-y: auto; background: white; border: 1px solid #ddd; border-radius: 4px; padding: 10px; }}
         .measurement-row {{ padding: 5px; border-bottom: 1px solid #eee; font-family: monospace; font-size: 0.85em; }}
         .footer {{ background: #f8f9fa; padding: 20px; text-align: center; color: #666; border-top: 1px solid #ddd; }}
@@ -486,14 +518,17 @@ class LiveMonitor:
         for idx, capture in enumerate(self.captures, 1):
             measurements = capture['measurements']
             distances = [m['distance'] for m in measurements if m['distance'] is not None]
+            kalmans = [m['kalman'] for m in measurements if m.get('kalman') is not None]
             pers = [m['per'] for m in measurements if m['per'] is not None]
             
             if distances:
                 stats = self._calculate_stats(distances)
                 per_mean = np.mean(pers) if pers else 0
                 per_max = np.max(pers) if pers else 0
+                kalman_mean = np.mean(kalmans) if kalmans else 0
                 
                 details = self._create_calculation_details(stats)
+                kalman_detail = self._create_kalman_details(kalman_mean)
                 
                 html += f"""
             <div class="capture">
@@ -505,8 +540,21 @@ class LiveMonitor:
                 <div id="modal-std-{idx}" style="display: none;">{details['std']}</div>
                 <div id="modal-median-{idx}" style="display: none;">{details['median']}</div>
                 <div id="modal-range-{idx}" style="display: none;">{details['range']}</div>
+                <div id="modal-kalman-{idx}" style="display: none;">{kalman_detail}</div>
 
                 <div class="stats-grid">
+                    <div class="stat-item kalman-highlight" onclick="showModal('Estatísticas do Filtro de Kalman', 'modal-kalman-{idx}')">
+                        <div class="stat-label">Kalman (Média)</div>
+                        <div class="stat-value">{kalman_mean:.2f} cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Média Bruta', 'modal-mean-{idx}')">
+                        <div class="stat-label">Raw Mean</div>
+                        <div class="stat-value">{stats['mean']:.2f} cm</div>
+                    </div>
+                    <div class="stat-item" onclick="showModal('Desvio Padrão', 'modal-std-{idx}')">
+                        <div class="stat-label">Std Dev</div>
+                        <div class="stat-value">{stats['std']:.2f} cm</div>
+                    </div>
                     <div class="stat-item" onclick="showModal('Mínimo', 'modal-min-{idx}')">
                         <div class="stat-label">Minimum</div>
                         <div class="stat-value">{stats['min']:.2f} cm</div>
@@ -515,29 +563,13 @@ class LiveMonitor:
                         <div class="stat-label">Maximum</div>
                         <div class="stat-value">{stats['max']:.2f} cm</div>
                     </div>
-                    <div class="stat-item" onclick="showModal('Média', 'modal-mean-{idx}')">
-                        <div class="stat-label">Mean</div>
-                        <div class="stat-value">{stats['mean']:.2f} cm</div>
-                    </div>
-                    <div class="stat-item" onclick="showModal('Desvio Padrão', 'modal-std-{idx}')">
-                        <div class="stat-label">Std Dev</div>
-                        <div class="stat-value">{stats['std']:.2f} cm</div>
-                    </div>
-                    <div class="stat-item" onclick="showModal('Mediana', 'modal-median-{idx}')">
-                        <div class="stat-label">Median</div>
-                        <div class="stat-value">{stats['median']:.2f} cm</div>
-                    </div>
                     <div class="stat-item" onclick="showModal('Amplitude', 'modal-range-{idx}')">
                         <div class="stat-label">Range</div>
                         <div class="stat-value">{(stats['max']-stats['min']):.2f} cm</div>
                     </div>
-                    <div class="stat-item">
-                        <div class="stat-label">Avg PER</div>
-                        <div class="stat-value">{per_mean:.2f} %</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-label">Max PER</div>
-                        <div class="stat-value">{per_max:.2f} %</div>
+                    <div class="stat-item" onclick="showModal('Mediana', 'modal-median-{idx}')">
+                        <div class="stat-label">Median</div>
+                        <div class="stat-value">{stats['median']:.2f} cm</div>
                     </div>
                 </div>
                 
@@ -548,9 +580,10 @@ class LiveMonitor:
                 for m in measurements[:25]:
                     if m['distance'] is not None:
                         ts = m['timestamp'].strftime("%H:%M:%S.%f")[:-3]
+                        kalm_str = f"| Kalman: {m['kalman']:.2f}cm" if m.get('kalman') is not None else ""
                         rssi_str = f"| RSSI: {m['rssi']:3.0f}dBm" if m['rssi'] else ""
                         per_str = f"| PER: {m['per']:.1f}%" if m['per'] is not None else ""
-                        html += f'<div class="measurement-row">[{ts}] {m["distance"]:.2f}cm {rssi_str} {per_str}</div>\n'
+                        html += f'<div class="measurement-row">[{ts}] Raw: {m["distance"]:.2f}cm {kalm_str} {rssi_str} {per_str}</div>\n'
                 
                 html += """
                 </div>
@@ -603,9 +636,9 @@ Examples:
     monitor = LiveMonitor(args.port, args.baudrate)
     
     if monitor.monitor():
-        print("\n" + "="*80)
+        print("\n" + "="*90)
         print("📊 Generating HTML Report...")
-        print("="*80)
+        print("="*90)
         monitor.generate_html_report()
         print("✅ Done!")
 

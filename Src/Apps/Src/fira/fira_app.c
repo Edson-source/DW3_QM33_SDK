@@ -93,7 +93,7 @@ void fira_set_default_params(bool controller)
     session_params->ranging_round_usage = 2; // 2 = DS-TWR (Imunidade contra drift de clock em distâncias maiores)
     session_params->max_rr_retry = 3;        // Hardware luta por 3x antes de derrubar o pacote
     session_params->report_rssi = 1;         // Ativa leitura de energia
-    session_params->enable_diagnostics = true; // Ativa a coleta de dados de diagnóstico
+    session_params->enable_diagnostics = false; // Ativa a coleta de dados de diagnóstico
 
     /* Bit 0 is for setting tof report. */
     session_params->result_report_config |= fira_helper_bool_to_result_report_config(true, false, false, false);
@@ -685,10 +685,16 @@ static char *fira_range_diagnostics_ntf_frame_status_to_string(uint8_t frame_sta
 /* ========================================================================= */
 float k_est = 0.0f;       // Estimativa atual do estado (Distância filtrada)
 float k_p = 1.0f;         // Incerteza da estimativa atual
-float k_q = 0.05f;        // Q: Ruído do Processo (Agilidade da Lança. Aumente se houver atraso/lag)
+float k_q = 0.1f;        // Q: Ruído do Processo (Agilidade da Lança. Aumente se houver atraso/lag)
 float k_r = 15.0f;        // R: Ruído da Medição (Jitter do UWB. Aumente se estiver tremendo muito)
 bool kalman_iniciado = false; // Flag para inicializar o filtro no primeiro ping
 
+#define QTD_LEITURAS_DISTANCE 30
+bool distance_media_liberada = 0;
+int16_t distance_leituras[QTD_LEITURAS_DISTANCE];
+int8_t distance_i_leitura = 0;
+int32_t distance_soma = 0;
+float distance_media = 0;
 uint32_t total_success = 0;
 float per = 0.0f;
 
@@ -777,8 +783,27 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
 
             len += snprintf(&str_result->str[len], str_result->len - len, ", distance_bruta[cm]=%d", (int)medicao_atual);
             len += snprintf(&str_result->str[len], str_result->len - len, ", kalman[cm]=%.2f", k_est);
-            len += snprintf(&str_result->str[len], str_result->len - len, ", status_link=\"OPERANTE\"");
-
+            
+            if (!distance_media_liberada)
+            {
+                distance_leituras[distance_i_leitura] = rm->distance_cm;
+                distance_soma += distance_leituras[distance_i_leitura];
+            }
+            else
+            {
+                distance_soma -= distance_leituras[distance_i_leitura];
+                distance_leituras[distance_i_leitura] = rm->distance_cm;
+                distance_soma += distance_leituras[distance_i_leitura];
+            }
+            if (++distance_i_leitura >= QTD_LEITURAS_DISTANCE)
+            {
+                distance_i_leitura = 0;
+                distance_media_liberada = 1;
+            }
+            if (distance_media_liberada)
+                distance_media = (float)distance_soma / QTD_LEITURAS_DISTANCE;
+            len += snprintf(&str_result->str[len], str_result->len - len, ", media_movel[cm]=%.2f", distance_media);
+            
             if (rm->local_aoa_measurements[0].aoa_fom_100 > 0)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", loc_az_pdoa=%0.2f, loc_az=%0.2f", convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].pdoa_2pi), convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].aoa_2pi));
             if (rm->local_aoa_measurements[1].aoa_fom_100 > 0)
@@ -789,11 +814,6 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
                 len += snprintf(&str_result->str[len], str_result->len - len, ", rmt_el=%0.2f", convert_aoa_2pi_q16_to_deg(rm->remote_aoa_elevation_pi));
             if (rm->rssi)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", RSSI[dBm]=%0.1f", convert_rssi_q7_to_dbm(rm->rssi));
-        }
-        else
-        {
-            kalman_iniciado = false; // Reseta o filtro para não carregar inércia morta no próximo ping
-            len += snprintf(&str_result->str[len], str_result->len - len, ", distance_bruta[cm]=0, kalman[cm]=0.00, status_link=\"PERDIDO_IMEDIATO\"");
         }
         len += snprintf(&str_result->str[len], str_result->len - len, "]");
     }
