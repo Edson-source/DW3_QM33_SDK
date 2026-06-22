@@ -6,7 +6,7 @@
  * @author    Qorvo Applications
  *
  * @copyright SPDX-FileCopyrightText: Copyright (c) 2024-2025 Qorvo US, Inc.
- *            SPDX-License-Identifier: LicenseRef-QORVO-2
+ * SPDX-License-Identifier: LicenseRef-QORVO-2
  *
  */
 
@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #include "fira_app_config.h"
 #include "fira_default_params.h"
@@ -29,7 +30,6 @@
 #include "qmalloc.h"
 #include "uwb_convert.h"
 #include "uwb_translate.h"
-
 
 static struct uwbmac_context *uwbmac_ctx = NULL;
 static struct fira_context fira_ctx;
@@ -77,17 +77,24 @@ void fira_set_default_params(bool controller)
     session_params->slot_duration_rstu = FIRA_DEFAULT_SLOT_DURATION_RSTU;
     session_params->block_duration_ms = FIRA_DEFAULT_BLOCK_DURATION_MS;
     session_params->round_duration_slots = FIRA_DEFAULT_ROUND_DURATION_SLOTS;
-    session_params->ranging_round_usage = FIRA_DEFAULT_RANGING_ROUND_USAGE;
     session_params->multi_node_mode = FIRA_DEFAULT_MULTI_NODE_MODE;
     session_params->round_hopping = FIRA_DEFAULT_ROUND_HOPPING;
     session_params->schedule_mode = FIRA_SCHEDULE_MODE_TIME_SCHEDULED;
 
-    /* FiRa PHY default config. */
-    session_params->preamble_code_index = FIRA_DEFAULT_PREAMBLE_CODE_INDEX;
-    /* Default: standard PHR rate (0). */
-    session_params->phr_data_rate = FIRA_PRF_MODE_BPRF;
-    /* Default: 9. */
-    session_params->channel_number = FIRA_DEFAULT_CHANNEL_NUMBER;
+    /* ========================================================== */
+    /* MÁXIMA SENSIBILIDADE E CONFIABILIDADE DE LINK              */
+    /* ========================================================== */
+    session_params->channel_number = 5;      // Canal 5 (6.5 GHz): Frequência menor = maior penetração
+    session_params->prf_mode = 0;            // 0 = BPRF (62.4 MHz)
+    session_params->preamble_code_index = 9; // Código padrão mais robusto do BPRF
+    session_params->preamble_duration = 1;   // 1 = 64 símbolos (Ouvido mais apurado)
+    session_params->phr_data_rate = 0;       // 0 = 850 kbps (Mais lento = Mais alcance)
+    session_params->psdu_data_rate = 0;      // 0 = 6.81 Mbps (Taxa de dados mais confiável)
+    session_params->ranging_round_usage = 2; // 2 = DS-TWR (Imunidade contra drift de clock em distâncias maiores)
+    session_params->max_rr_retry = 3;        // Hardware luta por 3x antes de derrubar o pacote
+    session_params->report_rssi = 1;         // Ativa leitura de energia
+    session_params->enable_diagnostics = true; // Ativa a coleta de dados de diagnóstico
+
     /* Bit 0 is for setting tof report. */
     session_params->result_report_config |= fira_helper_bool_to_result_report_config(true, false, false, false);
     /* Request measurement report phase. */
@@ -606,124 +613,13 @@ static char *fira_session_status_ntf_reason_code_to_string(enum quwbs_fbs_reason
 {
     switch (reason_code)
     {
-        case QUWBS_FBS_REASON_CODE_STATE_CHANGE_WITH_SESSION_MANAGEMENT_COMMANDS:
-            return "State change with session management commands";
-        case QUWBS_FBS_REASON_CODE_MAX_RANGING_ROUND_RETRY_COUNT_REACHED:
-            return "Max ranging round retry count reached";
-        case QUWBS_FBS_REASON_CODE_MAX_NUMBER_OF_MEASUREMENTS_REACHED:
-            return "Max number of measurements reached";
-        case QUWBS_FBS_REASON_CODE_SESSION_SUSPENDED_DUE_TO_INBAND_SIGNAL:
-            return "Session suspended due to inband signal";
-        case QUWBS_FBS_REASON_CODE_SESSION_RESUMED_DUE_TO_INBAND_SIGNAL:
-            return "Session resumed due to inband signal";
-        case QUWBS_FBS_REASON_CODE_SESSION_STOPPED_DUE_TO_INBAND_SIGNAL:
-            return "Session stopped due to inband signal";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_UL_TDOA_RANDOM_WINDOW:
-            return "Invalid UL TDOA random window";
-        case QUWBS_FBS_REASON_CODE_ERROR_MIN_FRAMES_PER_RR_NOT_SUPPORTED:
-            return "Minimum frames per ranging round not supported";
-        case QUWBS_FBS_REASON_CODE_ERROR_INTER_FRAME_INTERVAL_NOT_SUPPORTED:
-            return "Inter frame interval not supported";
-        case QUWBS_FBS_REASON_CODE_ERROR_SLOT_LENGTH_NOT_SUPPORTED:
-            return "Slot length not supported";
-        case QUWBS_FBS_REASON_CODE_ERROR_INSUFFICIENT_SLOTS_PER_RR:
-            return "Insufficient slots per ranging round";
-        case QUWBS_FBS_REASON_CODE_ERROR_MAC_ADDRESS_MODE_NOT_SUPPORTED:
-            return "MAC address mode not supported";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_RANGING_DURATION:
-            return "Invalid ranging duration";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_STS_CONFIG:
-            return "Invalid STS configuration";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_RFRAME_CONFIG:
-            return "Invalid RFrame configuration";
-        case QUWBS_FBS_REASON_CODE_ERROR_HUS_NOT_ENOUGH_SLOTS:
-            return "HUS not enough slots";
-        case QUWBS_FBS_REASON_CODE_ERROR_HUS_CFP_PHASE_TOO_SHORT:
-            return "HUS CFP phase too short";
-        case QUWBS_FBS_REASON_CODE_ERROR_HUS_CAP_PHASE_TOO_SHORT:
-            return "HUS CAP phase too short";
-        case QUWBS_FBS_REASON_CODE_ERROR_HUS_OTHERS:
-            return "HUS others";
-        case QUWBS_FBS_REASON_CODE_ERROR_STATUS_SESSION_KEY_NOT_FOUND:
-            return "Status session key not found";
-        case QUWBS_FBS_REASON_CODE_ERROR_STATUS_SUB_SESSION_KEY_NOT_FOUND:
-            return "Status sub session key not found";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_PREAMBLE_CODE_INDEX:
-            return "Invalid preamble code index";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_SFD_ID:
-            return "Invalid SFD ID";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_PSDU_DATA_RATE:
-            return "Invalid PSDU data rate";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_PHR_DATA_RATE:
-            return "Invalid PHR data rate";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_PREAMBLE_DURATION:
-            return "Invalid preamble duration";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_STS_LENGTH:
-            return "Invalid STS length";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_NUM_OF_STS_SEGMENTS:
-            return "Invalid number of STS segments";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_NUM_OF_CONTROLEES:
-            return "Invalid number of controlees";
-        case QUWBS_FBS_REASON_CODE_ERROR_MAX_RANGING_REPLY_TIME_EXCEEDED:
-            return "Max ranging reply time exceeded";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_DST_ADDRESS_LIST:
-            return "Invalid destination address list";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_OR_NOT_FOUND_SUB_SESSION_ID:
-            return "Invalid or not found sub session ID";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_RESULT_REPORT_CONFIG:
-            return "Invalid result report configuration";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_RANGING_ROUND_CONTROL_CONFIG:
-            return "Invalid ranging round control configuration";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_RANGING_ROUND_USAGE:
-            return "Invalid ranging round usage";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_MULTI_NODE_MODE:
-            return "Invalid multi node mode";
-        case QUWBS_FBS_REASON_CODE_ERROR_RDS_FETCH_FAILURE:
-            return "RDS fetch failure";
-        case QUWBS_FBS_REASON_CODE_ERROR_REF_UWB_SESSION_DOES_NOT_EXIST:
-            return "Ref UWB session does not exist";
-        case QUWBS_FBS_REASON_CODE_ERROR_REF_UWB_SESSION_RANGING_DURATION_MISMATCH:
-            return "Ref UWB session ranging duration mismatch";
-        case QUWBS_FBS_REASON_CODE_ERROR_REF_UWB_SESSION_INVALID_OFFSET_TIME:
-            return "Ref UWB session invalid offset time";
-        case QUWBS_FBS_REASON_CODE_ERROR_REF_UWB_SESSION_LOST:
-            return "Ref UWB session lost";
-        case QUWBS_FBS_REASON_CODE_ERROR_DT_ANCHOR_RANGING_ROUNDS_NOT_CONFIGURED:
-            return "DT anchor ranging rounds not configured";
-        case QUWBS_FBS_REASON_CODE_ERROR_DT_TAG_RANGING_ROUNDS_NOT_CONFIGURED:
-            return "DT tag ranging rounds not configured";
-        case QUWBS_FBS_REASON_CODE_ERROR_UWB_INITIATION_TIME_EXPIRED:
-            return "UWB initiation time expired";
-        case QUWBS_FBS_REASON_CODE_AOSP_ERROR_INVALID_CHANNEL_WITH_AOA:
-            return "AOSP error invalid channel with AOA";
-        case QUWBS_FBS_REASON_CODE_AOSP_ERROR_STOPPED_DUE_TO_OTHER_SESSION_CONFLICT:
-            return "AOSP error stopped due to other session conflict";
-        case QUWBS_FBS_REASON_CODE_AOSP_REGULATION_UWB_OFF:
-            return "AOSP regulation UWB off";
-        case QUWBS_FBS_REASON_CODE_ERROR_MAX_STS_REACHED:
-            return "Max STS reached";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_DEVICE_ROLE:
-            return "Invalid device role";
-        case QUWBS_FBS_REASON_CODE_ERROR_NOMEM:
-            return "No memory";
-        case QUWBS_FBS_REASON_CODE_ERROR_DRIVER_DOWN:
-            return "Driver down";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_PROXIMITY_RANGE:
-            return "Invalid proximity range";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_FRAME_INTERVAL:
-            return "Invalid frame interval";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_CAP_SIZE_RANGE:
-            return "Invalid CAP size range";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_SCHEDULE_MODE:
-            return "Invalid schedule mode";
-        case QUWBS_FBS_REASON_CODE_ERROR_INVALID_PRF_MODE:
-            return "Invalid PRF mode";
-        case QUWBS_FBS_REASON_CODE_ERROR_START_CONFIG:
-            return "Start configuration";
-        case QUWBS_FBS_REASON_CODE_ERROR_RDS_BUSY:
-            return "RDS busy";
-        default:
-            return "Unknown";
+        case QUWBS_FBS_REASON_CODE_STATE_CHANGE_WITH_SESSION_MANAGEMENT_COMMANDS: return "State change with session management commands";
+        case QUWBS_FBS_REASON_CODE_MAX_RANGING_ROUND_RETRY_COUNT_REACHED: return "Max ranging round retry count reached";
+        case QUWBS_FBS_REASON_CODE_MAX_NUMBER_OF_MEASUREMENTS_REACHED: return "Max number of measurements reached";
+        case QUWBS_FBS_REASON_CODE_SESSION_SUSPENDED_DUE_TO_INBAND_SIGNAL: return "Session suspended due to inband signal";
+        case QUWBS_FBS_REASON_CODE_SESSION_RESUMED_DUE_TO_INBAND_SIGNAL: return "Session resumed due to inband signal";
+        case QUWBS_FBS_REASON_CODE_SESSION_STOPPED_DUE_TO_INBAND_SIGNAL: return "Session stopped due to inband signal";
+        default: return "Unknown";
     }
 }
 
@@ -784,28 +680,34 @@ static char *fira_range_diagnostics_ntf_frame_status_to_string(uint8_t frame_sta
     return result;
 }
 
-#define QTD_LEITURAS_DISTANCE 30
-bool distance_media_liberada = 0;
-int16_t distance_leituras[QTD_LEITURAS_DISTANCE];
-int8_t distance_i_leitura = 0;
-int32_t distance_soma = 0;
-float distance_media = 0;
+/* ========================================================================= */
+/* VARIÁVEIS GLOBAIS DO FILTRO DE KALMAN 1D                                  */
+/* ========================================================================= */
+float k_est = 0.0f;       // Estimativa atual do estado (Distância filtrada)
+float k_p = 1.0f;         // Incerteza da estimativa atual
+float k_q = 0.05f;        // Q: Ruído do Processo (Agilidade da Lança. Aumente se houver atraso/lag)
+float k_r = 15.0f;        // R: Ruído da Medição (Jitter do UWB. Aumente se estiver tremendo muito)
+bool kalman_iniciado = false; // Flag para inicializar o filtro no primeiro ping
+
 uint32_t total_success = 0;
 float per = 0.0f;
 
 #define QTD_LEITURA_PER 100
 uint16_t recebido_soma = 0;
 uint16_t transmitido_soma = 0;
+
 static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *results, void *user_data)
 {
     int len = 0;
     struct string_measurement *str_result = (struct string_measurement *)user_data;
     const struct fira_twr_measurements *rm;
+    
     len += snprintf(&str_result->str[len], str_result->len, "SESSION_INFO_NTF: ");
     len += snprintf(&str_result->str[len], str_result->len - len, "{session_handle=%" PRIu32, results->info->session_handle);
     len += snprintf(&str_result->str[len], str_result->len - len, ", sequence_number=%" PRIu32, results->info->sequence_number);
     len += snprintf(&str_result->str[len], str_result->len - len, ", block_index=%" PRIu32, results->info->block_index);
     len += snprintf(&str_result->str[len], str_result->len - len, ", n_measurements=%d", results->n_measurements);
+
     /* ============================= */
     /* ===== PRINT MEASUREMENTS ==== */
     /* ============================= */
@@ -820,7 +722,7 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
         /* ======== PER JANELA ========= */
         /* ============================= */
 
-        // Atualiza os contadores de transmitidos e recebidos com base no status da medição atual
+        // Atualiza os contadores de transmitidos e recebidos
         if (rm->status == QUWBS_FBS_STATUS_RANGING_SUCCESS)
         {
             recebido_soma++;
@@ -830,7 +732,8 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
         {
             transmitido_soma++;
         }
-        // Atualiza o PER a cada nova medição, considerando apenas as últimas QTD_LEITURA_PER transmissões
+        
+        // Atualiza o PER
         if (transmitido_soma > 0)
         {
             per = (1 - ((float)recebido_soma / (float)transmitido_soma)) * 100.0f;
@@ -839,35 +742,43 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
         {
             per = 0.0f;
         }
-        // Zera os contadores e somas quando atingir o tamanho da janela
+        
+        // Zera contadores na virada da janela
         if (transmitido_soma >= QTD_LEITURA_PER)
         {
             recebido_soma = 0;
             transmitido_soma = 0;
         }
+        
         len += snprintf(&str_result->str[len], str_result->len - len, "\r\n\r [mac_address=0x%04x, status=\"%s\", PER=%.4f", rm->short_addr, fira_session_info_ntf_twr_status_to_string(rm->status), per);
+
+        /* ============================================================== */
+        /* BRUTALMENTE HONESTO + FILTRO DE KALMAN 1D                      */
+        /* ============================================================== */
         if (rm->status == QUWBS_FBS_STATUS_RANGING_SUCCESS)
         {
-            len += snprintf(&str_result->str[len], str_result->len - len, ", distance[cm]=%d", (int)rm->distance_cm);
-            if (!distance_media_liberada)
-            {
-                distance_leituras[distance_i_leitura] = rm->distance_cm;
-                distance_soma += distance_leituras[distance_i_leitura];
+            float medicao_atual = (float)rm->distance_cm;
+            
+            // 1. INICIALIZAÇÃO: Primeiro ping válido, absorve sem filtro
+            if (!kalman_iniciado) {
+                k_est = medicao_atual;
+                kalman_iniciado = true;
             }
-            else
-            {
-                distance_soma -= distance_leituras[distance_i_leitura];
-                distance_leituras[distance_i_leitura] = rm->distance_cm;
-                distance_soma += distance_leituras[distance_i_leitura];
+            // 2. CICLO DO FILTRO DE KALMAN 1D
+            else {
+                k_p = k_p + k_q; // Passo 1: Previsão do Erro
+                
+                float k_gain = k_p / (k_p + k_r); // Passo 2: Ganho de Kalman
+                
+                k_est = k_est + k_gain * (medicao_atual - k_est); // Passo 3: Atualização do Estado
+                
+                k_p = (1.0f - k_gain) * k_p; // Passo 4: Atualização da Incerteza
             }
-            if (++distance_i_leitura >= QTD_LEITURAS_DISTANCE)
-            {
-                distance_i_leitura = 0;
-                distance_media_liberada = 1;
-            }
-            if (distance_media_liberada)
-                distance_media = (float)distance_soma / QTD_LEITURAS_DISTANCE;
-            len += snprintf(&str_result->str[len], str_result->len - len, ", media[cm]=%.2f", distance_media);
+
+            len += snprintf(&str_result->str[len], str_result->len - len, ", distance_bruta[cm]=%d", (int)medicao_atual);
+            len += snprintf(&str_result->str[len], str_result->len - len, ", kalman[cm]=%.2f", k_est);
+            len += snprintf(&str_result->str[len], str_result->len - len, ", status_link=\"OPERANTE\"");
+
             if (rm->local_aoa_measurements[0].aoa_fom_100 > 0)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", loc_az_pdoa=%0.2f, loc_az=%0.2f", convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].pdoa_2pi), convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].aoa_2pi));
             if (rm->local_aoa_measurements[1].aoa_fom_100 > 0)
@@ -878,6 +789,11 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
                 len += snprintf(&str_result->str[len], str_result->len - len, ", rmt_el=%0.2f", convert_aoa_2pi_q16_to_deg(rm->remote_aoa_elevation_pi));
             if (rm->rssi)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", RSSI[dBm]=%0.1f", convert_rssi_q7_to_dbm(rm->rssi));
+        }
+        else
+        {
+            kalman_iniciado = false; // Reseta o filtro para não carregar inércia morta no próximo ping
+            len += snprintf(&str_result->str[len], str_result->len - len, ", distance_bruta[cm]=0, kalman[cm]=0.00, status_link=\"PERDIDO_IMEDIATO\"");
         }
         len += snprintf(&str_result->str[len], str_result->len - len, "]");
     }
