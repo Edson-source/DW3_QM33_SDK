@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UWB Measurement Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background: #e9ecef; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%); color: white; padding: 30px; text-align: center; }
+        .header h1 { font-size: 2.2em; margin-bottom: 5px; }
+        .content { padding: 30px; }
+        
+        .capture { margin-bottom: 40px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; overflow: hidden; }
+        .capture-header { background: #fff; padding: 15px 20px; border-bottom: 2px solid #4b6cb7; display: flex; justify-content: space-between; align-items: center; }
+        .capture-title { font-size: 1.2em; color: #4b6cb7; font-weight: bold; }
+        .capture-health { font-size: 0.9em; background: #e9ecef; padding: 5px 15px; border-radius: 20px; color: #495057; font-weight: 600; display: flex; gap: 15px; }
+        
+        .capture-body { display: flex; flex-direction: row; padding: 20px; gap: 25px; }
+        
+        .stats-panel { flex: 0 0 340px; display: flex; flex-direction: column; gap: 20px; }
+        .stat-group { background: #fff; border-radius: 6px; border: 1px solid #e9ecef; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+        .stat-group-header { background: #f1f3f5; padding: 8px 15px; font-size: 0.85em; color: #495057; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center; }
+        .info-icon { cursor: pointer; color: #4b6cb7; font-weight: bold; background: #e2e6ea; border-radius: 50%; width: 20px; height: 20px; display: inline-flex; justify-content: center; align-items: center; font-size: 0.85em; }
+        .info-icon:hover { background: #4b6cb7; color: white; }
+        
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: #e9ecef; }
+        
+        .stat-item { background: #fff; padding: 12px; text-align: center; }
+        .stat-item:hover { background: #f8f9fa; }
+        .stat-item.highlight { background: #fdfcff; }
+        .stat-label { font-size: 0.70em; color: #868e96; text-transform: uppercase; margin-bottom: 2px; font-weight: 600; }
+        .stat-value { font-size: 1.1em; font-weight: bold; color: #343a40; }
+        .highlight .stat-value { color: #764ba2; }
+        
+        .log-panel { flex: 1; display: flex; flex-direction: column; gap: 15px; }
+        .chart-container { background: white; border: 1px solid #e9ecef; border-radius: 6px; padding: 15px; height: 250px; position: relative; }
+        .measurements { flex: 1; min-height: 250px; max-height: 350px; overflow-y: auto; background: #212529; color: #a1ef8c; border-radius: 6px; padding: 15px; font-family: 'Consolas', monospace; font-size: 0.85em; line-height: 1.5; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5); }
+        .measurement-row { border-bottom: 1px solid rgba(255,255,255,0.05); padding: 3px 0; display: flex; gap: 10px; }
+        .measurement-row:hover { background: rgba(255,255,255,0.05); }
+        .blk-col { color: #ffc107; min-width: 90px; }
+        .dt-col { color: #17a2b8; min-width: 60px; }
+        
+        .footer { background: #fff; padding: 20px; text-align: center; color: #6c757d; border-top: 1px solid #dee2e6; font-size: 0.9em; }
+        
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); }
+        .modal.show { display: flex; align-items: center; justify-content: center; }
+        .modal-content { background-color: white; padding: 30px; border-radius: 8px; max-width: 500px; max-height: 80vh; overflow-y: auto; box-shadow: 0 15px 50px rgba(0,0,0,0.3); }
+        .modal-header { font-size: 1.3em; font-weight: bold; color: #4b6cb7; margin-bottom: 15px; border-bottom: 2px solid #4b6cb7; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .modal-body { font-size: 0.95em; line-height: 1.7; color: #495057; }
+        .close-btn { font-size: 1.2em; font-weight: bold; cursor: pointer; color: #adb5bd; border: none; background: none; }
+        .close-btn:hover { color: #dc3545; }
+    </style>
+    <script>
+        let currentModal = null;
+        function showModal(title, contentId) {
+            const modal = document.getElementById('infoModal');
+            const sourceContent = document.getElementById(contentId);
+            if (!modal || !sourceContent) { return; }
+            document.getElementById('modalTitleText').innerText = title;
+            document.getElementById('modalBody').innerHTML = sourceContent.innerHTML;
+            modal.classList.add('show');
+            currentModal = modal;
+        }
+        function closeModal() {
+            if (currentModal) { currentModal.classList.remove('show'); }
+        }
+        window.onclick = function(event) {
+            const modal = document.getElementById('infoModal');
+            if (event.target === modal) { closeModal(); }
+        }
+        document.addEventListener('keydown', function(event) {
+            if (event.key === "Escape") { closeModal(); }
+        });
+    </script>
+</head>
+<body>
+    <div id="infoModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span id="modalTitleText">Detalhes</span>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>📡 Relatório de Medição UWB</h1>
+            <p>DWM3001CDK Análise Comparativa de Filtros & Qualidade de Sinal</p>
+        </div>
+        
+        <div class="content">
+
+            <div class="capture">
+                <div class="capture-header">
+                    <div class="capture-title">📈 Janela de Captura #1</div>
+                    <div class="capture-health">
+                        <span>Δt Médio: 200.6 ms</span>
+                        <span>RSSI Médio: -62.1 dBm</span>
+                        <span>PER Médio: 30.0%</span>
+                    </div>
+                </div>
+                
+                <div id="modal-kalman-1" style="display: none;">
+        <p><strong>Filtro de Kalman (1D):</strong> Algoritmo de estimação preditiva. Permanente e dinâmico, ele rastreia mudanças rapidamente sem introduzir arrasto mecânico pesado.</p>
+        <p><strong>Parâmetros (C Firmware):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10</li>
+            <li><strong>R (Ruído da Medição - Jitter):</strong> 15.00</li>
+        </ul>
+        <p>Oferece o melhor equilíbrio: variação contida (range muito menor que o bruto) e tempo de resposta instantâneo.</p>
+        </div>
+                <div id="modal-movavg-1" style="display: none;">
+        <p><strong>Média Móvel:</strong> Filtro passa-baixa básico que calcula a média aritmética das últimas <em>N</em> amostras (no seu firmware configurado para 30 leituras).</p>
+        <p><strong>Comportamento:</strong></p>
+        <ul>
+            <li>Suaviza o sinal e apresenta o <strong>menor range de variação</strong> matemático.</li>
+            <li><strong>Desvantagem (Lag):</strong> Introduz um atraso mecânico significativo. Mudanças rápidas na distância física demoram vários ciclos para refletir no valor.</li>
+        </ul>
+        </div>
+
+                <div class="capture-body">
+                    <div class="stats-panel">
+                        
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Filtro de Kalman (1D)
+                                <span class="info-icon" onclick="showModal('Filtro de Kalman', 'modal-kalman-1')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item highlight"><div class="stat-label">Média</div><div class="stat-value">106.59 cm</div></div>
+                                <div class="stat-item highlight"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">2.08 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">7.02 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">103.4 / 110.4</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Média Móvel (30 Leituras)
+                                <span class="info-icon" onclick="showModal('Média Móvel', 'modal-movavg-1')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">106.40 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">1.62 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">5.53 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">104.2 / 109.7</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">Sinal Bruto (Raw Data)</div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">111.28 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">8.04 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">29.00 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">98.0 / 127.0</div></div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="log-panel">
+                        <div class="chart-container">
+                            <canvas id="chart-1"></canvas>
+                        </div>
+                        
+                        <div class="measurements">
+<div class="measurement-row"><span>[16:17:47.747]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #830  </span><span>Raw:  99.00cm | Kalm: 104.63cm | Mov: 104.67cm | RSSI: -64dBm [████] | PER: 35.5%</span></div>
+<div class="measurement-row"><span>[16:17:47.947]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #831  </span><span>Raw: 100.00cm | Kalm: 104.34cm | Mov: 104.43cm | RSSI: -64dBm [████] | PER: 34.4%</span></div>
+<div class="measurement-row"><span>[16:17:48.147]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #832  </span><span>Raw:  98.00cm | Kalm: 104.00cm | Mov: 104.23cm | RSSI: -64dBm [████] | PER: 33.3%</span></div>
+<div class="measurement-row"><span>[16:17:48.346]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #833  </span><span>Raw: 103.00cm | Kalm: 103.69cm | Mov: 104.20cm | RSSI: -62dBm [████] | PER: 32.4%</span></div>
+<div class="measurement-row"><span>[16:17:48.548]</span><span class="dt-col">Δt: 201ms</span><span class="blk-col">Blk #834  </span><span>Raw: 112.00cm | Kalm: 103.40cm | Mov: 104.37cm | RSSI: -58dBm [████] | PER: 31.4%</span></div>
+<div class="measurement-row"><span>[16:17:48.746]</span><span class="dt-col">Δt: 198ms</span><span class="blk-col">Blk #835  </span><span>Raw: 116.00cm | Kalm: 103.37cm | Mov: 104.67cm | RSSI: -58dBm [████] | PER: 30.6%</span></div>
+<div class="measurement-row"><span>[16:17:48.947]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #836  </span><span>Raw: 113.00cm | Kalm: 104.05cm | Mov: 105.00cm | RSSI: -58dBm [████] | PER: 29.7%</span></div>
+<div class="measurement-row"><span>[16:17:49.147]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #837  </span><span>Raw: 111.00cm | Kalm: 104.67cm | Mov: 105.20cm | RSSI: -58dBm [████] | PER: 28.9%</span></div>
+<div class="measurement-row"><span>[16:17:49.346]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #838  </span><span>Raw: 111.00cm | Kalm: 105.24cm | Mov: 105.37cm | RSSI: -58dBm [████] | PER: 28.2%</span></div>
+<div class="measurement-row"><span>[16:17:49.547]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #839  </span><span>Raw: 114.00cm | Kalm: 105.85cm | Mov: 105.70cm | RSSI: -60dBm [████] | PER: 27.5%</span></div>
+<div class="measurement-row"><span>[16:17:49.746]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #840  </span><span>Raw: 113.00cm | Kalm: 106.41cm | Mov: 105.97cm | RSSI: -58dBm [████] | PER: 26.8%</span></div>
+<div class="measurement-row"><span>[16:17:49.946]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #841  </span><span>Raw: 111.00cm | Kalm: 106.77cm | Mov: 106.07cm | RSSI: -60dBm [████] | PER: 26.2%</span></div>
+<div class="measurement-row"><span>[16:17:50.151]</span><span class="dt-col">Δt: 204ms</span><span class="blk-col">Blk #842  </span><span>Raw: 114.00cm | Kalm: 107.26cm | Mov: 106.23cm | RSSI: -60dBm [████] | PER: 25.6%</span></div>
+<div class="measurement-row"><span>[16:17:50.348]</span><span class="dt-col">Δt: 196ms</span><span class="blk-col">Blk #843  </span><span>Raw: 105.00cm | Kalm: 107.71cm | Mov: 106.00cm | RSSI: -66dBm [████] | PER: 25.0%</span></div>
+<div class="measurement-row"><span>[16:17:50.746]</span><span class="dt-col">Δt: 207ms</span><span class="blk-col">Blk #845  </span><span>Raw: 127.00cm | Kalm: 108.12cm | Mov: 107.17cm | RSSI: -68dBm [████] | PER: 26.1%</span></div>
+<div class="measurement-row"><span>[16:17:51.947]</span><span class="dt-col">Δt: 207ms</span><span class="blk-col">Blk #851  </span><span>Raw: 108.00cm | Kalm: 108.35cm | Mov: 107.50cm | RSSI: -62dBm [████] | PER: 32.7%</span></div>
+<div class="measurement-row"><span>[16:17:52.147]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #852  </span><span>Raw: 104.00cm | Kalm: 108.32cm | Mov: 107.67cm | RSSI: -63dBm [████] | PER: 32.1%</span></div>
+<div class="measurement-row"><span>[16:17:52.346]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #853  </span><span>Raw: 103.00cm | Kalm: 108.06cm | Mov: 107.43cm | RSSI: -63dBm [████] | PER: 31.5%</span></div>
+<div class="measurement-row"><span>[16:17:52.547]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #854  </span><span>Raw: 109.00cm | Kalm: 108.06cm | Mov: 107.60cm | RSSI: -63dBm [████] | PER: 30.9%</span></div>
+<div class="measurement-row"><span>[16:17:52.746]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #855  </span><span>Raw: 110.00cm | Kalm: 108.05cm | Mov: 107.60cm | RSSI: -61dBm [████] | PER: 30.4%</span></div>
+<div class="measurement-row"><span>[16:17:52.947]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #856  </span><span>Raw: 122.00cm | Kalm: 108.13cm | Mov: 108.03cm | RSSI: -62dBm [████] | PER: 29.8%</span></div>
+<div class="measurement-row"><span>[16:17:53.147]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #857  </span><span>Raw: 109.00cm | Kalm: 108.20cm | Mov: 107.87cm | RSSI: -61dBm [████] | PER: 29.3%</span></div>
+<div class="measurement-row"><span>[16:17:53.746]</span><span class="dt-col">Δt: 206ms</span><span class="blk-col">Blk #860  </span><span>Raw: 122.00cm | Kalm: 108.34cm | Mov: 108.37cm | RSSI: -66dBm [████] | PER: 31.1%</span></div>
+<div class="measurement-row"><span>[16:17:53.947]</span><span class="dt-col">Δt: 201ms</span><span class="blk-col">Blk #861  </span><span>Raw: 124.00cm | Kalm: 109.41cm | Mov: 109.03cm | RSSI: -69dBm [████] | PER: 30.6%</span></div>
+<div class="measurement-row"><span>[16:17:54.148]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #862  </span><span>Raw: 124.00cm | Kalm: 110.39cm | Mov: 109.73cm | RSSI: -68dBm [████] | PER: 30.2%</span></div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const ctx = document.getElementById('chart-1').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [830, 831, 832, 833, 834, 835, 836, 837, 838, 839, 840, 841, 842, 843, 845, 851, 852, 853, 854, 855, 856, 857, 860, 861, 862],
+                            datasets: [
+                                {
+                                    label: 'Raw Data',
+                                    data: [99.0, 100.0, 98.0, 103.0, 112.0, 116.0, 113.0, 111.0, 111.0, 114.0, 113.0, 111.0, 114.0, 105.0, 127.0, 108.0, 104.0, 103.0, 109.0, 110.0, 122.0, 109.0, 122.0, 124.0, 124.0],
+                                    borderColor: '#adb5bd',
+                                    borderDash: [5, 5],
+                                    borderWidth: 1.5,
+                                    pointRadius: 2,
+                                    fill: false,
+                                    tension: 0
+                                },
+                                {
+                                    label: 'Kalman Filter',
+                                    data: [104.63, 104.34, 104.0, 103.69, 103.4, 103.37, 104.05, 104.67, 105.24, 105.85, 106.41, 106.77, 107.26, 107.71, 108.12, 108.35, 108.32, 108.06, 108.06, 108.05, 108.13, 108.2, 108.34, 109.41, 110.39],
+                                    borderColor: '#764ba2',
+                                    borderWidth: 2.5,
+                                    pointRadius: 3,
+                                    pointBackgroundColor: '#764ba2',
+                                    fill: false,
+                                    tension: 0.1
+                                },
+                                {
+                                    label: 'Média Móvel',
+                                    data: [104.67, 104.43, 104.23, 104.2, 104.37, 104.67, 105.0, 105.2, 105.37, 105.7, 105.97, 106.07, 106.23, 106.0, 107.17, 107.5, 107.67, 107.43, 107.6, 107.6, 108.03, 107.87, 108.37, 109.03, 109.73],
+                                    borderColor: '#20c997',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: false,
+                                    tension: 0.3
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'top', labels: { boxWidth: 12 } }
+                            },
+                            scales: {
+                                x: { display: true, title: { display: true, text: 'Block Index' } },
+                                y: { display: true, title: { display: true, text: 'Distance (cm)' } }
+                            }
+                        }
+                    });
+                });
+            </script>
+
+            <div class="capture">
+                <div class="capture-header">
+                    <div class="capture-title">📈 Janela de Captura #2</div>
+                    <div class="capture-health">
+                        <span>Δt Médio: 200.4 ms</span>
+                        <span>RSSI Médio: -61.0 dBm</span>
+                        <span>PER Médio: 29.9%</span>
+                    </div>
+                </div>
+                
+                <div id="modal-kalman-2" style="display: none;">
+        <p><strong>Filtro de Kalman (1D):</strong> Algoritmo de estimação preditiva. Permanente e dinâmico, ele rastreia mudanças rapidamente sem introduzir arrasto mecânico pesado.</p>
+        <p><strong>Parâmetros (C Firmware):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10</li>
+            <li><strong>R (Ruído da Medição - Jitter):</strong> 15.00</li>
+        </ul>
+        <p>Oferece o melhor equilíbrio: variação contida (range muito menor que o bruto) e tempo de resposta instantâneo.</p>
+        </div>
+                <div id="modal-movavg-2" style="display: none;">
+        <p><strong>Média Móvel:</strong> Filtro passa-baixa básico que calcula a média aritmética das últimas <em>N</em> amostras (no seu firmware configurado para 30 leituras).</p>
+        <p><strong>Comportamento:</strong></p>
+        <ul>
+            <li>Suaviza o sinal e apresenta o <strong>menor range de variação</strong> matemático.</li>
+            <li><strong>Desvantagem (Lag):</strong> Introduz um atraso mecânico significativo. Mudanças rápidas na distância física demoram vários ciclos para refletir no valor.</li>
+        </ul>
+        </div>
+
+                <div class="capture-body">
+                    <div class="stats-panel">
+                        
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Filtro de Kalman (1D)
+                                <span class="info-icon" onclick="showModal('Filtro de Kalman', 'modal-kalman-2')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item highlight"><div class="stat-label">Média</div><div class="stat-value">112.53 cm</div></div>
+                                <div class="stat-item highlight"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">0.71 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">3.13 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">110.4 / 113.5</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Média Móvel (30 Leituras)
+                                <span class="info-icon" onclick="showModal('Média Móvel', 'modal-movavg-2')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">112.60 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">1.27 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">4.17 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">109.7 / 113.9</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">Sinal Bruto (Raw Data)</div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">112.72 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">5.77 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">24.00 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">100.0 / 124.0</div></div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="log-panel">
+                        <div class="chart-container">
+                            <canvas id="chart-2"></canvas>
+                        </div>
+                        
+                        <div class="measurements">
+<div class="measurement-row"><span>[16:17:54.148]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #862  </span><span>Raw: 124.00cm | Kalm: 110.39cm | Mov: 109.73cm | RSSI: -68dBm [████] | PER: 30.2%</span></div>
+<div class="measurement-row"><span>[16:17:54.948]</span><span class="dt-col">Δt: 209ms</span><span class="blk-col">Blk #866  </span><span>Raw: 108.00cm | Kalm: 111.30cm | Mov: 109.87cm | RSSI: -61dBm [████] | PER: 32.8%</span></div>
+<div class="measurement-row"><span>[16:17:55.146]</span><span class="dt-col">Δt: 198ms</span><span class="blk-col">Blk #867  </span><span>Raw: 115.00cm | Kalm: 112.14cm | Mov: 110.30cm | RSSI: -60dBm [████] | PER: 32.4%</span></div>
+<div class="measurement-row"><span>[16:17:55.346]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #868  </span><span>Raw: 113.00cm | Kalm: 112.37cm | Mov: 110.70cm | RSSI: -61dBm [████] | PER: 31.9%</span></div>
+<div class="measurement-row"><span>[16:17:55.551]</span><span class="dt-col">Δt: 204ms</span><span class="blk-col">Blk #869  </span><span>Raw: 113.00cm | Kalm: 112.42cm | Mov: 111.07cm | RSSI: -60dBm [████] | PER: 31.4%</span></div>
+<div class="measurement-row"><span>[16:17:55.748]</span><span class="dt-col">Δt: 196ms</span><span class="blk-col">Blk #870  </span><span>Raw: 120.00cm | Kalm: 112.46cm | Mov: 111.70cm | RSSI: -62dBm [████] | PER: 31.0%</span></div>
+<div class="measurement-row"><span>[16:17:55.947]</span><span class="dt-col">Δt: 198ms</span><span class="blk-col">Blk #871  </span><span>Raw: 113.00cm | Kalm: 112.50cm | Mov: 112.17cm | RSSI: -62dBm [████] | PER: 30.6%</span></div>
+<div class="measurement-row"><span>[16:17:56.146]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #872  </span><span>Raw: 119.00cm | Kalm: 112.54cm | Mov: 112.80cm | RSSI: -62dBm [████] | PER: 30.1%</span></div>
+<div class="measurement-row"><span>[16:17:56.346]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #873  </span><span>Raw: 121.00cm | Kalm: 113.05cm | Mov: 113.57cm | RSSI: -58dBm [████] | PER: 29.7%</span></div>
+<div class="measurement-row"><span>[16:17:56.546]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #874  </span><span>Raw: 113.00cm | Kalm: 113.52cm | Mov: 113.90cm | RSSI: -58dBm [████] | PER: 29.3%</span></div>
+<div class="measurement-row"><span>[16:17:56.746]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #875  </span><span>Raw: 106.00cm | Kalm: 113.48cm | Mov: 113.70cm | RSSI: -60dBm [████] | PER: 28.9%</span></div>
+<div class="measurement-row"><span>[16:17:56.946]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #876  </span><span>Raw: 112.00cm | Kalm: 113.44cm | Mov: 113.57cm | RSSI: -58dBm [████] | PER: 28.6%</span></div>
+<div class="measurement-row"><span>[16:17:57.147]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #877  </span><span>Raw: 112.00cm | Kalm: 113.33cm | Mov: 113.53cm | RSSI: -58dBm [████] | PER: 28.2%</span></div>
+<div class="measurement-row"><span>[16:17:57.346]</span><span class="dt-col">Δt: 198ms</span><span class="blk-col">Blk #878  </span><span>Raw: 113.00cm | Kalm: 113.22cm | Mov: 113.60cm | RSSI: -58dBm [████] | PER: 27.8%</span></div>
+<div class="measurement-row"><span>[16:17:57.547]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #879  </span><span>Raw: 110.00cm | Kalm: 113.13cm | Mov: 113.57cm | RSSI: -58dBm [████] | PER: 27.5%</span></div>
+<div class="measurement-row"><span>[16:17:57.746]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #880  </span><span>Raw: 108.00cm | Kalm: 113.04cm | Mov: 113.37cm | RSSI: -62dBm [████] | PER: 27.2%</span></div>
+<div class="measurement-row"><span>[16:17:57.948]</span><span class="dt-col">Δt: 201ms</span><span class="blk-col">Blk #881  </span><span>Raw: 115.00cm | Kalm: 112.96cm | Mov: 113.43cm | RSSI: -58dBm [████] | PER: 26.8%</span></div>
+<div class="measurement-row"><span>[16:17:58.145]</span><span class="dt-col">Δt: 197ms</span><span class="blk-col">Blk #882  </span><span>Raw: 100.00cm | Kalm: 112.72cm | Mov: 113.07cm | RSSI: -69dBm [████] | PER: 26.5%</span></div>
+<div class="measurement-row"><span>[16:17:59.746]</span><span class="dt-col">Δt: 207ms</span><span class="blk-col">Blk #890  </span><span>Raw: 115.00cm | Kalm: 112.51cm | Mov: 113.10cm | RSSI: -58dBm [████] | PER: 31.9%</span></div>
+<div class="measurement-row"><span>[16:17:59.947]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #891  </span><span>Raw: 106.00cm | Kalm: 112.16cm | Mov: 113.13cm | RSSI: -60dBm [████] | PER: 31.5%</span></div>
+<div class="measurement-row"><span>[16:18:00.146]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #892  </span><span>Raw: 113.00cm | Kalm: 112.22cm | Mov: 112.67cm | RSSI: -60dBm [████] | PER: 31.2%</span></div>
+<div class="measurement-row"><span>[16:18:00.346]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #893  </span><span>Raw: 112.00cm | Kalm: 112.21cm | Mov: 112.80cm | RSSI: -59dBm [████] | PER: 30.9%</span></div>
+<div class="measurement-row"><span>[16:18:00.547]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #894  </span><span>Raw: 110.00cm | Kalm: 112.19cm | Mov: 113.00cm | RSSI: -62dBm [████] | PER: 30.5%</span></div>
+<div class="measurement-row"><span>[16:18:00.746]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #895  </span><span>Raw: 104.00cm | Kalm: 112.02cm | Mov: 113.03cm | RSSI: -62dBm [████] | PER: 30.2%</span></div>
+<div class="measurement-row"><span>[16:18:01.150]</span><span class="dt-col">Δt: 207ms</span><span class="blk-col">Blk #897  </span><span>Raw: 123.00cm | Kalm: 112.02cm | Mov: 113.50cm | RSSI: -67dBm [████] | PER: 30.6%</span></div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const ctx = document.getElementById('chart-2').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [862, 866, 867, 868, 869, 870, 871, 872, 873, 874, 875, 876, 877, 878, 879, 880, 881, 882, 890, 891, 892, 893, 894, 895, 897],
+                            datasets: [
+                                {
+                                    label: 'Raw Data',
+                                    data: [124.0, 108.0, 115.0, 113.0, 113.0, 120.0, 113.0, 119.0, 121.0, 113.0, 106.0, 112.0, 112.0, 113.0, 110.0, 108.0, 115.0, 100.0, 115.0, 106.0, 113.0, 112.0, 110.0, 104.0, 123.0],
+                                    borderColor: '#adb5bd',
+                                    borderDash: [5, 5],
+                                    borderWidth: 1.5,
+                                    pointRadius: 2,
+                                    fill: false,
+                                    tension: 0
+                                },
+                                {
+                                    label: 'Kalman Filter',
+                                    data: [110.39, 111.3, 112.14, 112.37, 112.42, 112.46, 112.5, 112.54, 113.05, 113.52, 113.48, 113.44, 113.33, 113.22, 113.13, 113.04, 112.96, 112.72, 112.51, 112.16, 112.22, 112.21, 112.19, 112.02, 112.02],
+                                    borderColor: '#764ba2',
+                                    borderWidth: 2.5,
+                                    pointRadius: 3,
+                                    pointBackgroundColor: '#764ba2',
+                                    fill: false,
+                                    tension: 0.1
+                                },
+                                {
+                                    label: 'Média Móvel',
+                                    data: [109.73, 109.87, 110.3, 110.7, 111.07, 111.7, 112.17, 112.8, 113.57, 113.9, 113.7, 113.57, 113.53, 113.6, 113.57, 113.37, 113.43, 113.07, 113.1, 113.13, 112.67, 112.8, 113.0, 113.03, 113.5],
+                                    borderColor: '#20c997',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: false,
+                                    tension: 0.3
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'top', labels: { boxWidth: 12 } }
+                            },
+                            scales: {
+                                x: { display: true, title: { display: true, text: 'Block Index' } },
+                                y: { display: true, title: { display: true, text: 'Distance (cm)' } }
+                            }
+                        }
+                    });
+                });
+            </script>
+
+            <div class="capture">
+                <div class="capture-header">
+                    <div class="capture-title">📈 Janela de Captura #3</div>
+                    <div class="capture-health">
+                        <span>Δt Médio: 200.4 ms</span>
+                        <span>RSSI Médio: -64.7 dBm</span>
+                        <span>PER Médio: 19.0%</span>
+                    </div>
+                </div>
+                
+                <div id="modal-kalman-3" style="display: none;">
+        <p><strong>Filtro de Kalman (1D):</strong> Algoritmo de estimação preditiva. Permanente e dinâmico, ele rastreia mudanças rapidamente sem introduzir arrasto mecânico pesado.</p>
+        <p><strong>Parâmetros (C Firmware):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10</li>
+            <li><strong>R (Ruído da Medição - Jitter):</strong> 15.00</li>
+        </ul>
+        <p>Oferece o melhor equilíbrio: variação contida (range muito menor que o bruto) e tempo de resposta instantâneo.</p>
+        </div>
+                <div id="modal-movavg-3" style="display: none;">
+        <p><strong>Média Móvel:</strong> Filtro passa-baixa básico que calcula a média aritmética das últimas <em>N</em> amostras (no seu firmware configurado para 30 leituras).</p>
+        <p><strong>Comportamento:</strong></p>
+        <ul>
+            <li>Suaviza o sinal e apresenta o <strong>menor range de variação</strong> matemático.</li>
+            <li><strong>Desvantagem (Lag):</strong> Introduz um atraso mecânico significativo. Mudanças rápidas na distância física demoram vários ciclos para refletir no valor.</li>
+        </ul>
+        </div>
+
+                <div class="capture-body">
+                    <div class="stats-panel">
+                        
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Filtro de Kalman (1D)
+                                <span class="info-icon" onclick="showModal('Filtro de Kalman', 'modal-kalman-3')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item highlight"><div class="stat-label">Média</div><div class="stat-value">112.37 cm</div></div>
+                                <div class="stat-item highlight"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">3.37 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">9.64 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">109.3 / 118.9</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Média Móvel (30 Leituras)
+                                <span class="info-icon" onclick="showModal('Média Móvel', 'modal-movavg-3')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">111.01 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">1.66 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">5.40 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">109.0 / 114.4</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">Sinal Bruto (Raw Data)</div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">115.20 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">13.56 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">52.00 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">82.0 / 134.0</div></div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="log-panel">
+                        <div class="chart-container">
+                            <canvas id="chart-3"></canvas>
+                        </div>
+                        
+                        <div class="measurements">
+<div class="measurement-row"><span>[16:18:04.146]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #912  </span><span>Raw: 109.00cm | Kalm: 109.28cm | Mov: 110.30cm | RSSI: -62dBm [████] | PER: 30.8%</span></div>
+<div class="measurement-row"><span>[16:18:04.346]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #913  </span><span>Raw: 114.00cm | Kalm: 109.26cm | Mov: 110.33cm | RSSI: -59dBm [████] | PER: 28.6%</span></div>
+<div class="measurement-row"><span>[16:18:04.546]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #914  </span><span>Raw: 117.00cm | Kalm: 109.31cm | Mov: 110.23cm | RSSI: -58dBm [████] | PER: 26.7%</span></div>
+<div class="measurement-row"><span>[16:18:04.746]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #915  </span><span>Raw: 108.00cm | Kalm: 109.37cm | Mov: 110.07cm | RSSI: -60dBm [████] | PER: 25.0%</span></div>
+<div class="measurement-row"><span>[16:18:04.946]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #916  </span><span>Raw: 114.00cm | Kalm: 109.73cm | Mov: 109.90cm | RSSI: -59dBm [████] | PER: 23.5%</span></div>
+<div class="measurement-row"><span>[16:18:05.146]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #917  </span><span>Raw: 110.00cm | Kalm: 110.07cm | Mov: 109.53cm | RSSI: -61dBm [████] | PER: 22.2%</span></div>
+<div class="measurement-row"><span>[16:18:05.346]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #918  </span><span>Raw: 109.00cm | Kalm: 110.06cm | Mov: 109.40cm | RSSI: -60dBm [████] | PER: 21.1%</span></div>
+<div class="measurement-row"><span>[16:18:05.546]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #919  </span><span>Raw: 115.00cm | Kalm: 110.06cm | Mov: 109.70cm | RSSI: -58dBm [████] | PER: 20.0%</span></div>
+<div class="measurement-row"><span>[16:18:05.746]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #920  </span><span>Raw: 114.00cm | Kalm: 110.37cm | Mov: 109.77cm | RSSI: -60dBm [████] | PER: 19.0%</span></div>
+<div class="measurement-row"><span>[16:18:05.946]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #921  </span><span>Raw: 114.00cm | Kalm: 110.65cm | Mov: 109.83cm | RSSI: -60dBm [████] | PER: 18.2%</span></div>
+<div class="measurement-row"><span>[16:18:06.147]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #922  </span><span>Raw: 105.00cm | Kalm: 110.91cm | Mov: 109.57cm | RSSI: -61dBm [████] | PER: 17.4%</span></div>
+<div class="measurement-row"><span>[16:18:06.346]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #923  </span><span>Raw: 105.00cm | Kalm: 111.15cm | Mov: 109.40cm | RSSI: -63dBm [████] | PER: 16.7%</span></div>
+<div class="measurement-row"><span>[16:18:06.546]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #924  </span><span>Raw:  96.00cm | Kalm: 110.67cm | Mov: 109.00cm | RSSI: -74dBm [████] | PER: 16.0%</span></div>
+<div class="measurement-row"><span>[16:18:06.746]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #925  </span><span>Raw: 134.00cm | Kalm: 110.23cm | Mov: 109.63cm | RSSI: -70dBm [████] | PER: 15.4%</span></div>
+<div class="measurement-row"><span>[16:18:06.946]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #926  </span><span>Raw: 127.00cm | Kalm: 109.82cm | Mov: 110.53cm | RSSI: -67dBm [████] | PER: 14.8%</span></div>
+<div class="measurement-row"><span>[16:18:07.146]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #927  </span><span>Raw: 129.00cm | Kalm: 111.16cm | Mov: 111.00cm | RSSI: -66dBm [████] | PER: 14.3%</span></div>
+<div class="measurement-row"><span>[16:18:07.346]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #928  </span><span>Raw: 125.00cm | Kalm: 112.41cm | Mov: 111.63cm | RSSI: -67dBm [████] | PER: 13.8%</span></div>
+<div class="measurement-row"><span>[16:18:07.545]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #929  </span><span>Raw: 128.00cm | Kalm: 113.63cm | Mov: 112.13cm | RSSI: -64dBm [████] | PER: 13.3%</span></div>
+<div class="measurement-row"><span>[16:18:07.751]</span><span class="dt-col">Δt: 205ms</span><span class="blk-col">Blk #930  </span><span>Raw: 128.00cm | Kalm: 114.75cm | Mov: 112.67cm | RSSI: -67dBm [████] | PER: 12.9%</span></div>
+<div class="measurement-row"><span>[16:18:07.948]</span><span class="dt-col">Δt: 196ms</span><span class="blk-col">Blk #931  </span><span>Raw: 132.00cm | Kalm: 115.79cm | Mov: 113.40cm | RSSI: -68dBm [████] | PER: 12.5%</span></div>
+<div class="measurement-row"><span>[16:18:08.550]</span><span class="dt-col">Δt: 208ms</span><span class="blk-col">Blk #934  </span><span>Raw: 134.00cm | Kalm: 116.75cm | Mov: 114.40cm | RSSI: -68dBm [████] | PER: 17.1%</span></div>
+<div class="measurement-row"><span>[16:18:08.945]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #936  </span><span>Raw:  82.00cm | Kalm: 117.63cm | Mov: 113.03cm | RSSI: -74dBm [████] | PER: 18.9%</span></div>
+<div class="measurement-row"><span>[16:18:09.146]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #937  </span><span>Raw:  88.00cm | Kalm: 118.44cm | Mov: 112.77cm | RSSI: -72dBm [████] | PER: 18.4%</span></div>
+<div class="measurement-row"><span>[16:18:09.347]</span><span class="dt-col">Δt: 201ms</span><span class="blk-col">Blk #938  </span><span>Raw: 123.00cm | Kalm: 118.80cm | Mov: 113.33cm | RSSI: -70dBm [████] | PER: 17.9%</span></div>
+<div class="measurement-row"><span>[16:18:09.948]</span><span class="dt-col">Δt: 209ms</span><span class="blk-col">Blk #941  </span><span>Raw: 120.00cm | Kalm: 118.90cm | Mov: 113.80cm | RSSI: -68dBm [████] | PER: 21.4%</span></div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const ctx = document.getElementById('chart-3').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [912, 913, 914, 915, 916, 917, 918, 919, 920, 921, 922, 923, 924, 925, 926, 927, 928, 929, 930, 931, 934, 936, 937, 938, 941],
+                            datasets: [
+                                {
+                                    label: 'Raw Data',
+                                    data: [109.0, 114.0, 117.0, 108.0, 114.0, 110.0, 109.0, 115.0, 114.0, 114.0, 105.0, 105.0, 96.0, 134.0, 127.0, 129.0, 125.0, 128.0, 128.0, 132.0, 134.0, 82.0, 88.0, 123.0, 120.0],
+                                    borderColor: '#adb5bd',
+                                    borderDash: [5, 5],
+                                    borderWidth: 1.5,
+                                    pointRadius: 2,
+                                    fill: false,
+                                    tension: 0
+                                },
+                                {
+                                    label: 'Kalman Filter',
+                                    data: [109.28, 109.26, 109.31, 109.37, 109.73, 110.07, 110.06, 110.06, 110.37, 110.65, 110.91, 111.15, 110.67, 110.23, 109.82, 111.16, 112.41, 113.63, 114.75, 115.79, 116.75, 117.63, 118.44, 118.8, 118.9],
+                                    borderColor: '#764ba2',
+                                    borderWidth: 2.5,
+                                    pointRadius: 3,
+                                    pointBackgroundColor: '#764ba2',
+                                    fill: false,
+                                    tension: 0.1
+                                },
+                                {
+                                    label: 'Média Móvel',
+                                    data: [110.3, 110.33, 110.23, 110.07, 109.9, 109.53, 109.4, 109.7, 109.77, 109.83, 109.57, 109.4, 109.0, 109.63, 110.53, 111.0, 111.63, 112.13, 112.67, 113.4, 114.4, 113.03, 112.77, 113.33, 113.8],
+                                    borderColor: '#20c997',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: false,
+                                    tension: 0.3
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'top', labels: { boxWidth: 12 } }
+                            },
+                            scales: {
+                                x: { display: true, title: { display: true, text: 'Block Index' } },
+                                y: { display: true, title: { display: true, text: 'Distance (cm)' } }
+                            }
+                        }
+                    });
+                });
+            </script>
+
+            <div class="capture">
+                <div class="capture-header">
+                    <div class="capture-title">📈 Janela de Captura #4</div>
+                    <div class="capture-health">
+                        <span>Δt Médio: 199.5 ms</span>
+                        <span>RSSI Médio: -58.3 dBm</span>
+                        <span>PER Médio: 12.8%</span>
+                    </div>
+                </div>
+                
+                <div id="modal-kalman-4" style="display: none;">
+        <p><strong>Filtro de Kalman (1D):</strong> Algoritmo de estimação preditiva. Permanente e dinâmico, ele rastreia mudanças rapidamente sem introduzir arrasto mecânico pesado.</p>
+        <p><strong>Parâmetros (C Firmware):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10</li>
+            <li><strong>R (Ruído da Medição - Jitter):</strong> 15.00</li>
+        </ul>
+        <p>Oferece o melhor equilíbrio: variação contida (range muito menor que o bruto) e tempo de resposta instantâneo.</p>
+        </div>
+                <div id="modal-movavg-4" style="display: none;">
+        <p><strong>Média Móvel:</strong> Filtro passa-baixa básico que calcula a média aritmética das últimas <em>N</em> amostras (no seu firmware configurado para 30 leituras).</p>
+        <p><strong>Comportamento:</strong></p>
+        <ul>
+            <li>Suaviza o sinal e apresenta o <strong>menor range de variação</strong> matemático.</li>
+            <li><strong>Desvantagem (Lag):</strong> Introduz um atraso mecânico significativo. Mudanças rápidas na distância física demoram vários ciclos para refletir no valor.</li>
+        </ul>
+        </div>
+
+                <div class="capture-body">
+                    <div class="stats-panel">
+                        
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Filtro de Kalman (1D)
+                                <span class="info-icon" onclick="showModal('Filtro de Kalman', 'modal-kalman-4')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item highlight"><div class="stat-label">Média</div><div class="stat-value">113.50 cm</div></div>
+                                <div class="stat-item highlight"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">0.65 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">1.85 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">112.3 / 114.1</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Média Móvel (30 Leituras)
+                                <span class="info-icon" onclick="showModal('Média Móvel', 'modal-movavg-4')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">112.54 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">1.18 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">3.97 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">109.9 / 113.9</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">Sinal Bruto (Raw Data)</div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">114.52 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">1.85 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">7.00 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">110.0 / 117.0</div></div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="log-panel">
+                        <div class="chart-container">
+                            <canvas id="chart-4"></canvas>
+                        </div>
+                        
+                        <div class="measurements">
+<div class="measurement-row"><span>[16:18:13.346]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #958  </span><span>Raw: 114.00cm | Kalm: 112.28cm | Mov: 113.27cm | RSSI: -58dBm [████] | PER: 15.3%</span></div>
+<div class="measurement-row"><span>[16:18:13.545]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #959  </span><span>Raw: 114.00cm | Kalm: 112.34cm | Mov: 113.87cm | RSSI: -58dBm [████] | PER: 15.0%</span></div>
+<div class="measurement-row"><span>[16:18:13.747]</span><span class="dt-col">Δt: 201ms</span><span class="blk-col">Blk #960  </span><span>Raw: 115.00cm | Kalm: 112.47cm | Mov: 113.23cm | RSSI: -58dBm [████] | PER: 14.8%</span></div>
+<div class="measurement-row"><span>[16:18:13.946]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #961  </span><span>Raw: 114.00cm | Kalm: 112.59cm | Mov: 112.80cm | RSSI: -58dBm [████] | PER: 14.5%</span></div>
+<div class="measurement-row"><span>[16:18:14.145]</span><span class="dt-col">Δt: 198ms</span><span class="blk-col">Blk #962  </span><span>Raw: 117.00cm | Kalm: 112.70cm | Mov: 112.40cm | RSSI: -60dBm [████] | PER: 14.3%</span></div>
+<div class="measurement-row"><span>[16:18:14.345]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #963  </span><span>Raw: 110.00cm | Kalm: 112.80cm | Mov: 111.90cm | RSSI: -60dBm [████] | PER: 14.1%</span></div>
+<div class="measurement-row"><span>[16:18:14.545]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #964  </span><span>Raw: 116.00cm | Kalm: 112.98cm | Mov: 111.50cm | RSSI: -58dBm [████] | PER: 13.8%</span></div>
+<div class="measurement-row"><span>[16:18:14.747]</span><span class="dt-col">Δt: 201ms</span><span class="blk-col">Blk #965  </span><span>Raw: 115.00cm | Kalm: 113.13cm | Mov: 111.07cm | RSSI: -58dBm [████] | PER: 13.6%</span></div>
+<div class="measurement-row"><span>[16:18:14.946]</span><span class="dt-col">Δt: 198ms</span><span class="blk-col">Blk #966  </span><span>Raw: 115.00cm | Kalm: 113.28cm | Mov: 110.50cm | RSSI: -58dBm [████] | PER: 13.4%</span></div>
+<div class="measurement-row"><span>[16:18:15.145]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #967  </span><span>Raw: 116.00cm | Kalm: 113.42cm | Mov: 109.90cm | RSSI: -58dBm [████] | PER: 13.2%</span></div>
+<div class="measurement-row"><span>[16:18:15.345]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #968  </span><span>Raw: 114.00cm | Kalm: 113.54cm | Mov: 110.97cm | RSSI: -58dBm [████] | PER: 13.0%</span></div>
+<div class="measurement-row"><span>[16:18:15.551]</span><span class="dt-col">Δt: 205ms</span><span class="blk-col">Blk #969  </span><span>Raw: 117.00cm | Kalm: 113.65cm | Mov: 111.93cm | RSSI: -58dBm [████] | PER: 12.9%</span></div>
+<div class="measurement-row"><span>[16:18:15.749]</span><span class="dt-col">Δt: 198ms</span><span class="blk-col">Blk #970  </span><span>Raw: 113.00cm | Kalm: 113.76cm | Mov: 111.60cm | RSSI: -60dBm [████] | PER: 12.7%</span></div>
+<div class="measurement-row"><span>[16:18:15.946]</span><span class="dt-col">Δt: 197ms</span><span class="blk-col">Blk #971  </span><span>Raw: 117.00cm | Kalm: 113.93cm | Mov: 111.50cm | RSSI: -60dBm [████] | PER: 12.5%</span></div>
+<div class="measurement-row"><span>[16:18:16.146]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #972  </span><span>Raw: 113.00cm | Kalm: 113.94cm | Mov: 112.27cm | RSSI: -58dBm [████] | PER: 12.3%</span></div>
+<div class="measurement-row"><span>[16:18:16.345]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #973  </span><span>Raw: 115.00cm | Kalm: 114.02cm | Mov: 112.63cm | RSSI: -58dBm [████] | PER: 12.2%</span></div>
+<div class="measurement-row"><span>[16:18:16.546]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #974  </span><span>Raw: 114.00cm | Kalm: 114.02cm | Mov: 112.87cm | RSSI: -58dBm [████] | PER: 12.0%</span></div>
+<div class="measurement-row"><span>[16:18:16.746]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #975  </span><span>Raw: 116.00cm | Kalm: 114.10cm | Mov: 113.17cm | RSSI: -60dBm [████] | PER: 11.8%</span></div>
+<div class="measurement-row"><span>[16:18:16.946]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #976  </span><span>Raw: 113.00cm | Kalm: 114.09cm | Mov: 113.40cm | RSSI: -58dBm [████] | PER: 11.7%</span></div>
+<div class="measurement-row"><span>[16:18:17.146]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #977  </span><span>Raw: 114.00cm | Kalm: 114.08cm | Mov: 113.70cm | RSSI: -58dBm [████] | PER: 11.5%</span></div>
+<div class="measurement-row"><span>[16:18:17.345]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #978  </span><span>Raw: 115.00cm | Kalm: 114.08cm | Mov: 113.83cm | RSSI: -58dBm [████] | PER: 11.4%</span></div>
+<div class="measurement-row"><span>[16:18:17.546]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #979  </span><span>Raw: 110.00cm | Kalm: 114.07cm | Mov: 113.70cm | RSSI: -60dBm [████] | PER: 11.2%</span></div>
+<div class="measurement-row"><span>[16:18:17.745]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #980  </span><span>Raw: 117.00cm | Kalm: 114.07cm | Mov: 113.83cm | RSSI: -58dBm [████] | PER: 11.1%</span></div>
+<div class="measurement-row"><span>[16:18:17.946]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #981  </span><span>Raw: 114.00cm | Kalm: 114.06cm | Mov: 113.83cm | RSSI: -58dBm [████] | PER: 11.0%</span></div>
+<div class="measurement-row"><span>[16:18:18.146]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #982  </span><span>Raw: 115.00cm | Kalm: 114.13cm | Mov: 113.87cm | RSSI: -58dBm [████] | PER: 10.8%</span></div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const ctx = document.getElementById('chart-4').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [958, 959, 960, 961, 962, 963, 964, 965, 966, 967, 968, 969, 970, 971, 972, 973, 974, 975, 976, 977, 978, 979, 980, 981, 982],
+                            datasets: [
+                                {
+                                    label: 'Raw Data',
+                                    data: [114.0, 114.0, 115.0, 114.0, 117.0, 110.0, 116.0, 115.0, 115.0, 116.0, 114.0, 117.0, 113.0, 117.0, 113.0, 115.0, 114.0, 116.0, 113.0, 114.0, 115.0, 110.0, 117.0, 114.0, 115.0],
+                                    borderColor: '#adb5bd',
+                                    borderDash: [5, 5],
+                                    borderWidth: 1.5,
+                                    pointRadius: 2,
+                                    fill: false,
+                                    tension: 0
+                                },
+                                {
+                                    label: 'Kalman Filter',
+                                    data: [112.28, 112.34, 112.47, 112.59, 112.7, 112.8, 112.98, 113.13, 113.28, 113.42, 113.54, 113.65, 113.76, 113.93, 113.94, 114.02, 114.02, 114.1, 114.09, 114.08, 114.08, 114.07, 114.07, 114.06, 114.13],
+                                    borderColor: '#764ba2',
+                                    borderWidth: 2.5,
+                                    pointRadius: 3,
+                                    pointBackgroundColor: '#764ba2',
+                                    fill: false,
+                                    tension: 0.1
+                                },
+                                {
+                                    label: 'Média Móvel',
+                                    data: [113.27, 113.87, 113.23, 112.8, 112.4, 111.9, 111.5, 111.07, 110.5, 109.9, 110.97, 111.93, 111.6, 111.5, 112.27, 112.63, 112.87, 113.17, 113.4, 113.7, 113.83, 113.7, 113.83, 113.83, 113.87],
+                                    borderColor: '#20c997',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: false,
+                                    tension: 0.3
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'top', labels: { boxWidth: 12 } }
+                            },
+                            scales: {
+                                x: { display: true, title: { display: true, text: 'Block Index' } },
+                                y: { display: true, title: { display: true, text: 'Distance (cm)' } }
+                            }
+                        }
+                    });
+                });
+            </script>
+
+            <div class="capture">
+                <div class="capture-header">
+                    <div class="capture-title">📈 Janela de Captura #5</div>
+                    <div class="capture-health">
+                        <span>Δt Médio: 199.6 ms</span>
+                        <span>RSSI Médio: -59.3 dBm</span>
+                        <span>PER Médio: 2.6%</span>
+                    </div>
+                </div>
+                
+                <div id="modal-kalman-5" style="display: none;">
+        <p><strong>Filtro de Kalman (1D):</strong> Algoritmo de estimação preditiva. Permanente e dinâmico, ele rastreia mudanças rapidamente sem introduzir arrasto mecânico pesado.</p>
+        <p><strong>Parâmetros (C Firmware):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10</li>
+            <li><strong>R (Ruído da Medição - Jitter):</strong> 15.00</li>
+        </ul>
+        <p>Oferece o melhor equilíbrio: variação contida (range muito menor que o bruto) e tempo de resposta instantâneo.</p>
+        </div>
+                <div id="modal-movavg-5" style="display: none;">
+        <p><strong>Média Móvel:</strong> Filtro passa-baixa básico que calcula a média aritmética das últimas <em>N</em> amostras (no seu firmware configurado para 30 leituras).</p>
+        <p><strong>Comportamento:</strong></p>
+        <ul>
+            <li>Suaviza o sinal e apresenta o <strong>menor range de variação</strong> matemático.</li>
+            <li><strong>Desvantagem (Lag):</strong> Introduz um atraso mecânico significativo. Mudanças rápidas na distância física demoram vários ciclos para refletir no valor.</li>
+        </ul>
+        </div>
+
+                <div class="capture-body">
+                    <div class="stats-panel">
+                        
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Filtro de Kalman (1D)
+                                <span class="info-icon" onclick="showModal('Filtro de Kalman', 'modal-kalman-5')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item highlight"><div class="stat-label">Média</div><div class="stat-value">114.42 cm</div></div>
+                                <div class="stat-item highlight"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">0.78 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">2.68 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">112.3 / 115.0</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Média Móvel (30 Leituras)
+                                <span class="info-icon" onclick="showModal('Média Móvel', 'modal-movavg-5')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">114.42 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">0.59 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">2.13 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">112.9 / 115.0</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">Sinal Bruto (Raw Data)</div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">112.44 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">3.79 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">11.00 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">107.0 / 118.0</div></div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="log-panel">
+                        <div class="chart-container">
+                            <canvas id="chart-5"></canvas>
+                        </div>
+                        
+                        <div class="measurements">
+<div class="measurement-row"><span>[16:18:20.345]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #993  </span><span>Raw: 118.00cm | Kalm: 115.01cm | Mov: 115.00cm | RSSI: -58dBm [████] | PER: 9.6%</span></div>
+<div class="measurement-row"><span>[16:18:20.546]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #994  </span><span>Raw: 114.00cm | Kalm: 115.01cm | Mov: 114.93cm | RSSI: -58dBm [████] | PER: 9.5%</span></div>
+<div class="measurement-row"><span>[16:18:20.745]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #995  </span><span>Raw: 114.00cm | Kalm: 114.93cm | Mov: 114.90cm | RSSI: -58dBm [████] | PER: 9.4%</span></div>
+<div class="measurement-row"><span>[16:18:20.945]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #996  </span><span>Raw: 111.00cm | Kalm: 114.86cm | Mov: 114.77cm | RSSI: -60dBm [████] | PER: 9.3%</span></div>
+<div class="measurement-row"><span>[16:18:21.146]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #997  </span><span>Raw: 118.00cm | Kalm: 114.79cm | Mov: 114.83cm | RSSI: -60dBm [████] | PER: 9.2%</span></div>
+<div class="measurement-row"><span>[16:18:21.345]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #998  </span><span>Raw: 118.00cm | Kalm: 114.73cm | Mov: 114.97cm | RSSI: -58dBm [████] | PER: 9.1%</span></div>
+<div class="measurement-row"><span>[16:18:21.547]</span><span class="dt-col">Δt: 201ms</span><span class="blk-col">Blk #999  </span><span>Raw: 115.00cm | Kalm: 114.75cm | Mov: 114.90cm | RSSI: -58dBm [████] | PER: 9.0%</span></div>
+<div class="measurement-row"><span>[16:18:21.745]</span><span class="dt-col">Δt: 198ms</span><span class="blk-col">Blk #1000 </span><span>Raw: 110.00cm | Kalm: 114.77cm | Mov: 114.80cm | RSSI: -60dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:21.945]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #1001 </span><span>Raw: 116.00cm | Kalm: 114.87cm | Mov: 114.77cm | RSSI: -58dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:22.146]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #1002 </span><span>Raw: 116.00cm | Kalm: 114.95cm | Mov: 114.87cm | RSSI: -60dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:22.345]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #1003 </span><span>Raw: 108.00cm | Kalm: 114.96cm | Mov: 114.63cm | RSSI: -60dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:22.546]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #1004 </span><span>Raw: 114.00cm | Kalm: 114.88cm | Mov: 114.63cm | RSSI: -58dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:22.745]</span><span class="dt-col">Δt: 198ms</span><span class="blk-col">Blk #1005 </span><span>Raw: 117.00cm | Kalm: 114.97cm | Mov: 114.67cm | RSSI: -58dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:22.945]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #1006 </span><span>Raw: 115.00cm | Kalm: 114.97cm | Mov: 114.73cm | RSSI: -58dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:23.146]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #1007 </span><span>Raw: 113.00cm | Kalm: 114.90cm | Mov: 114.70cm | RSSI: -58dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:23.345]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #1008 </span><span>Raw: 107.00cm | Kalm: 114.83cm | Mov: 114.43cm | RSSI: -62dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:23.546]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #1009 </span><span>Raw: 111.00cm | Kalm: 114.68cm | Mov: 114.47cm | RSSI: -58dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:23.745]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #1010 </span><span>Raw: 111.00cm | Kalm: 114.39cm | Mov: 114.27cm | RSSI: -60dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:23.945]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #1011 </span><span>Raw: 114.00cm | Kalm: 114.13cm | Mov: 114.27cm | RSSI: -60dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:24.146]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #1012 </span><span>Raw: 107.00cm | Kalm: 113.88cm | Mov: 114.00cm | RSSI: -60dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:24.345]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #1013 </span><span>Raw: 113.00cm | Kalm: 113.66cm | Mov: 113.93cm | RSSI: -60dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:24.546]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #1014 </span><span>Raw: 107.00cm | Kalm: 113.45cm | Mov: 113.63cm | RSSI: -60dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:24.745]</span><span class="dt-col">Δt: 199ms</span><span class="blk-col">Blk #1015 </span><span>Raw: 109.00cm | Kalm: 113.10cm | Mov: 113.43cm | RSSI: -61dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:24.945]</span><span class="dt-col">Δt: 200ms</span><span class="blk-col">Blk #1016 </span><span>Raw: 108.00cm | Kalm: 112.70cm | Mov: 113.17cm | RSSI: -60dBm [████] | PER: 0.0%</span></div>
+<div class="measurement-row"><span>[16:18:25.147]</span><span class="dt-col">Δt: 201ms</span><span class="blk-col">Blk #1017 </span><span>Raw: 107.00cm | Kalm: 112.33cm | Mov: 112.87cm | RSSI: -60dBm [████] | PER: 0.0%</span></div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const ctx = document.getElementById('chart-5').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [993, 994, 995, 996, 997, 998, 999, 1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011, 1012, 1013, 1014, 1015, 1016, 1017],
+                            datasets: [
+                                {
+                                    label: 'Raw Data',
+                                    data: [118.0, 114.0, 114.0, 111.0, 118.0, 118.0, 115.0, 110.0, 116.0, 116.0, 108.0, 114.0, 117.0, 115.0, 113.0, 107.0, 111.0, 111.0, 114.0, 107.0, 113.0, 107.0, 109.0, 108.0, 107.0],
+                                    borderColor: '#adb5bd',
+                                    borderDash: [5, 5],
+                                    borderWidth: 1.5,
+                                    pointRadius: 2,
+                                    fill: false,
+                                    tension: 0
+                                },
+                                {
+                                    label: 'Kalman Filter',
+                                    data: [115.01, 115.01, 114.93, 114.86, 114.79, 114.73, 114.75, 114.77, 114.87, 114.95, 114.96, 114.88, 114.97, 114.97, 114.9, 114.83, 114.68, 114.39, 114.13, 113.88, 113.66, 113.45, 113.1, 112.7, 112.33],
+                                    borderColor: '#764ba2',
+                                    borderWidth: 2.5,
+                                    pointRadius: 3,
+                                    pointBackgroundColor: '#764ba2',
+                                    fill: false,
+                                    tension: 0.1
+                                },
+                                {
+                                    label: 'Média Móvel',
+                                    data: [115.0, 114.93, 114.9, 114.77, 114.83, 114.97, 114.9, 114.8, 114.77, 114.87, 114.63, 114.63, 114.67, 114.73, 114.7, 114.43, 114.47, 114.27, 114.27, 114.0, 113.93, 113.63, 113.43, 113.17, 112.87],
+                                    borderColor: '#20c997',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: false,
+                                    tension: 0.3
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'top', labels: { boxWidth: 12 } }
+                            },
+                            scales: {
+                                x: { display: true, title: { display: true, text: 'Block Index' } },
+                                y: { display: true, title: { display: true, text: 'Distance (cm)' } }
+                            }
+                        }
+                    });
+                });
+            </script>
+
+        </div>
+        
+        <div class="footer">
+            <p>Gerado em: 2026-06-23 16:18:28</p>
+            <p>Total de Capturas: 5 | Total de Medições: 288</p>
+            <p>Duração da Sessão: 45.9 segundos</p>
+        </div>
+    </div>
+</body>
+</html>

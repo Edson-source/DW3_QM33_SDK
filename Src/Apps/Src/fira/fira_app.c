@@ -73,7 +73,8 @@ void fira_set_default_params(bool controller)
 
     fira_params->session_id = FIRA_DEFAULT_SESSION_ID;
     fira_params->config_state = FIRA_APP_CONFIG_DEFAULT;
-    session_params->rframe_config = FIRA_DEFAULT_RFRAME_CONFIG;
+    session_params->rframe_config = FIRA_RFRAME_CONFIG_SP3;
+    session_params->sts_length = FIRA_STS_LENGTH_128; // Extensão do Scrambled Timestamp Sequence
     session_params->sfd_id = FIRA_DEFAULT_SFD_ID;
     session_params->slot_duration_rstu = FIRA_DEFAULT_SLOT_DURATION_RSTU;
     session_params->block_duration_ms = FIRA_DEFAULT_BLOCK_DURATION_MS;
@@ -85,16 +86,16 @@ void fira_set_default_params(bool controller)
     /* ========================================================== */
     /* MÁXIMA SENSIBILIDADE E CONFIABILIDADE DE LINK              */
     /* ========================================================== */
-    session_params->channel_number = 5;      // Canal 5 (6.5 GHz): Frequência menor = maior penetração
-    session_params->prf_mode = 0;            // 0 = BPRF (62.4 MHz)
-    session_params->preamble_code_index = 9; // Código padrão mais robusto do BPRF
-    session_params->preamble_duration = 1;   // 1 = 64 símbolos (Ouvido mais apurado)
-    session_params->phr_data_rate = 0;       // 0 = 850 kbps (Mais lento = Mais alcance)
-    session_params->psdu_data_rate = 0;      // 0 = 6.81 Mbps (Taxa de dados mais confiável)
-    session_params->ranging_round_usage = 2; // 2 = DS-TWR (Imunidade contra drift de clock em distâncias maiores)
-    session_params->max_rr_retry = 3;        // Hardware luta por 3x antes de derrubar o pacote
-    session_params->report_rssi = 1;         // Ativa leitura de energia
-    session_params->enable_diagnostics = false; // Ativa a coleta de dados de diagnóstico
+    session_params->channel_number = 5;                              // Canal 5 (6.5 GHz): Frequência menor = maior penetração
+    session_params->prf_mode = FIRA_PRF_MODE_BPRF;                   // 0 = BPRF (62.4 MHz)
+    session_params->preamble_code_index = 9;                         // Código padrão mais robusto do BPRF
+    session_params->preamble_duration = FIRA_PREAMBLE_DURATION_64;   // 1 = 64 símbolos (Ouvido mais apurado)
+    session_params->phr_data_rate = FIRA_PHR_DATA_RATE_850K;         // 0 = 850 kbps (Mais lento = Mais alcance)
+    session_params->psdu_data_rate = FIRA_PSDU_DATA_RATE_6M81;       // 0 = 6.81 Mbps (Taxa de dados mais confiável)
+    session_params->ranging_round_usage = FIRA_RANGING_ROUND_USAGE_DSTWR_NON_DEFERRED; // DS-TWR (Imunidade contra drift de clock em distâncias maiores)
+    session_params->max_rr_retry = 3;                                // Hardware luta por 3x antes de derrubar o pacote
+    session_params->report_rssi = 1;                                 // Ativa leitura de energia
+    session_params->enable_diagnostics = false;                      // Ativa a coleta de dados de diagnóstico
 
     /* Bit 0 is for setting tof report. */
     session_params->result_report_config |= fira_helper_bool_to_result_report_config(true, false, false, false);
