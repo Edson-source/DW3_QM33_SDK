@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UWB Measurement Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background: #e9ecef; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%); color: white; padding: 30px; text-align: center; }
+        .header h1 { font-size: 2.2em; margin-bottom: 5px; }
+        .content { padding: 30px; }
+        
+        .capture { margin-bottom: 40px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; overflow: hidden; }
+        .capture-header { background: #fff; padding: 15px 20px; border-bottom: 2px solid #4b6cb7; display: flex; justify-content: space-between; align-items: center; }
+        .capture-title { font-size: 1.2em; color: #4b6cb7; font-weight: bold; }
+        .capture-health { font-size: 0.9em; background: #e9ecef; padding: 5px 15px; border-radius: 20px; color: #495057; font-weight: 600; display: flex; gap: 15px; }
+        
+        .capture-body { display: flex; flex-direction: row; padding: 20px; gap: 25px; }
+        
+        .stats-panel { flex: 0 0 340px; display: flex; flex-direction: column; gap: 20px; }
+        .stat-group { background: #fff; border-radius: 6px; border: 1px solid #e9ecef; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+        .stat-group-header { background: #f1f3f5; padding: 8px 15px; font-size: 0.85em; color: #495057; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center; }
+        .info-icon { cursor: pointer; color: #4b6cb7; font-weight: bold; background: #e2e6ea; border-radius: 50%; width: 20px; height: 20px; display: inline-flex; justify-content: center; align-items: center; font-size: 0.85em; }
+        .info-icon:hover { background: #4b6cb7; color: white; }
+        
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: #e9ecef; }
+        
+        .stat-item { background: #fff; padding: 12px; text-align: center; }
+        .stat-item:hover { background: #f8f9fa; }
+        .stat-item.highlight { background: #fdfcff; }
+        .stat-label { font-size: 0.70em; color: #868e96; text-transform: uppercase; margin-bottom: 2px; font-weight: 600; }
+        .stat-value { font-size: 1.1em; font-weight: bold; color: #343a40; }
+        .highlight .stat-value { color: #764ba2; }
+        
+        .log-panel { flex: 1; display: flex; flex-direction: column; gap: 15px; }
+        .chart-container { background: white; border: 1px solid #e9ecef; border-radius: 6px; padding: 15px; height: 250px; position: relative; }
+        .measurements { flex: 1; min-height: 250px; max-height: 350px; overflow-y: auto; background: #212529; color: #a1ef8c; border-radius: 6px; padding: 15px; font-family: 'Consolas', monospace; font-size: 0.85em; line-height: 1.5; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5); }
+        .measurement-row { border-bottom: 1px solid rgba(255,255,255,0.05); padding: 3px 0; }
+        .measurement-row:hover { background: rgba(255,255,255,0.05); }
+        
+        .footer { background: #fff; padding: 20px; text-align: center; color: #6c757d; border-top: 1px solid #dee2e6; font-size: 0.9em; }
+        
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); }
+        .modal.show { display: flex; align-items: center; justify-content: center; }
+        .modal-content { background-color: white; padding: 30px; border-radius: 8px; max-width: 500px; max-height: 80vh; overflow-y: auto; box-shadow: 0 15px 50px rgba(0,0,0,0.3); }
+        .modal-header { font-size: 1.3em; font-weight: bold; color: #4b6cb7; margin-bottom: 15px; border-bottom: 2px solid #4b6cb7; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .modal-body { font-size: 0.95em; line-height: 1.7; color: #495057; }
+        .close-btn { font-size: 1.2em; font-weight: bold; cursor: pointer; color: #adb5bd; border: none; background: none; }
+        .close-btn:hover { color: #dc3545; }
+    </style>
+    <script>
+        let currentModal = null;
+        function showModal(title, contentId) {
+            const modal = document.getElementById('infoModal');
+            const sourceContent = document.getElementById(contentId);
+            if (!modal || !sourceContent) { return; }
+            document.getElementById('modalTitleText').innerText = title;
+            document.getElementById('modalBody').innerHTML = sourceContent.innerHTML;
+            modal.classList.add('show');
+            currentModal = modal;
+        }
+        function closeModal() {
+            if (currentModal) { currentModal.classList.remove('show'); }
+        }
+        window.onclick = function(event) {
+            const modal = document.getElementById('infoModal');
+            if (event.target === modal) { closeModal(); }
+        }
+        document.addEventListener('keydown', function(event) {
+            if (event.key === "Escape") { closeModal(); }
+        });
+    </script>
+</head>
+<body>
+    <div id="infoModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span id="modalTitleText">Detalhes</span>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>📡 Relatório de Medição UWB</h1>
+            <p>DWM3001CDK Análise Comparativa de Filtros & Qualidade de Sinal</p>
+        </div>
+        
+        <div class="content">
+
+            <div class="capture">
+                <div class="capture-header">
+                    <div class="capture-title">📈 Janela de Captura #1</div>
+                    <div class="capture-health">
+                        <span>RSSI Médio: -64.0 dBm</span>
+                        <span>PER Médio: 38.2%</span>
+                    </div>
+                </div>
+                
+                <div id="modal-kalman-1" style="display: none;">
+        <p><strong>Filtro de Kalman (1D):</strong> Algoritmo de estimação preditiva. Diferente da Média Móvel, ele rastreia mudanças rapidamente sem introduzir arrasto mecânico pesado.</p>
+        <p><strong>Parâmetros (C Firmware):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10</li>
+            <li><strong>R (Ruído da Medição - Jitter):</strong> 15.00</li>
+        </ul>
+        <p>Oferece o melhor equilíbrio: variação contida (range muito menor que o bruto) e tempo de resposta instantâneo.</p>
+        </div>
+                <div id="modal-movavg-1" style="display: none;">
+        <p><strong>Média Móvel:</strong> Filtro passa-baixa básico que calcula a média aritmética das últimas <em>N</em> amostras (no seu firmware configurado para 30 leituras).</p>
+        <p><strong>Comportamento:</strong></p>
+        <ul>
+            <li>Suaviza o sinal e apresenta o <strong>menor range de variação</strong> matemático.</li>
+            <li><strong>Desvantagem (Lag):</strong> Introduz um atraso mecânico significativo. Mudanças rápidas na distância física demoram vários ciclos para refletir no valor.</li>
+        </ul>
+        </div>
+
+                <div class="capture-body">
+                    <div class="stats-panel">
+                        
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Filtro de Kalman (1D)
+                                <span class="info-icon" onclick="showModal('Filtro de Kalman', 'modal-kalman-1')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item highlight"><div class="stat-label">Média</div><div class="stat-value">66.70 cm</div></div>
+                                <div class="stat-item highlight"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">0.99 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">3.09 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">65.4 / 68.5</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Média Móvel (30 Leituras)
+                                <span class="info-icon" onclick="showModal('Média Móvel', 'modal-movavg-1')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">67.11 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">1.56 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">4.70 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">64.9 / 69.6</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">Sinal Bruto (Raw Data)</div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">65.36 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">1.80 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">8.00 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">62.0 / 70.0</div></div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="log-panel">
+                        <div class="chart-container">
+                            <canvas id="chart-1"></canvas>
+                        </div>
+                        
+                        <div class="measurements">
+<div class="measurement-row">[08:03:02.529] Raw:  67.00cm | Kalm: 68.34cm | Mov: 69.60cm | RSSI: -62dBm [████] | PER: 44.0%</div>
+<div class="measurement-row">[08:03:02.729] Raw:  70.00cm | Kalm: 68.47cm | Mov: 69.53cm | RSSI: -64dBm [████] | PER: 43.4%</div>
+<div class="measurement-row">[08:03:02.929] Raw:  66.00cm | Kalm: 68.27cm | Mov: 69.27cm | RSSI: -65dBm [████] | PER: 42.9%</div>
+<div class="measurement-row">[08:03:03.129] Raw:  65.00cm | Kalm: 68.02cm | Mov: 69.10cm | RSSI: -65dBm [████] | PER: 42.3%</div>
+<div class="measurement-row">[08:03:03.329] Raw:  64.00cm | Kalm: 67.70cm | Mov: 68.73cm | RSSI: -61dBm [████] | PER: 41.8%</div>
+<div class="measurement-row">[08:03:03.529] Raw:  66.00cm | Kalm: 67.57cm | Mov: 68.60cm | RSSI: -63dBm [████] | PER: 41.2%</div>
+<div class="measurement-row">[08:03:03.729] Raw:  68.00cm | Kalm: 67.60cm | Mov: 68.43cm | RSSI: -66dBm [████] | PER: 40.7%</div>
+<div class="measurement-row">[08:03:03.928] Raw:  66.00cm | Kalm: 67.48cm | Mov: 68.27cm | RSSI: -62dBm [████] | PER: 40.2%</div>
+<div class="measurement-row">[08:03:04.130] Raw:  65.00cm | Kalm: 67.28cm | Mov: 68.10cm | RSSI: -63dBm [████] | PER: 39.8%</div>
+<div class="measurement-row">[08:03:04.329] Raw:  63.00cm | Kalm: 66.95cm | Mov: 67.83cm | RSSI: -65dBm [████] | PER: 39.3%</div>
+<div class="measurement-row">[08:03:04.529] Raw:  64.00cm | Kalm: 66.72cm | Mov: 67.53cm | RSSI: -63dBm [████] | PER: 38.8%</div>
+<div class="measurement-row">[08:03:04.729] Raw:  66.00cm | Kalm: 66.66cm | Mov: 67.30cm | RSSI: -65dBm [████] | PER: 38.4%</div>
+<div class="measurement-row">[08:03:04.929] Raw:  62.00cm | Kalm: 66.29cm | Mov: 66.93cm | RSSI: -64dBm [████] | PER: 37.9%</div>
+<div class="measurement-row">[08:03:05.130] Raw:  65.00cm | Kalm: 66.19cm | Mov: 66.70cm | RSSI: -62dBm [████] | PER: 37.5%</div>
+<div class="measurement-row">[08:03:05.329] Raw:  66.00cm | Kalm: 66.18cm | Mov: 66.60cm | RSSI: -63dBm [████] | PER: 37.1%</div>
+<div class="measurement-row">[08:03:05.529] Raw:  65.00cm | Kalm: 66.09cm | Mov: 66.43cm | RSSI: -66dBm [████] | PER: 36.7%</div>
+<div class="measurement-row">[08:03:05.729] Raw:  66.00cm | Kalm: 66.08cm | Mov: 66.20cm | RSSI: -62dBm [████] | PER: 36.3%</div>
+<div class="measurement-row">[08:03:05.928] Raw:  65.00cm | Kalm: 65.99cm | Mov: 65.93cm | RSSI: -66dBm [████] | PER: 35.9%</div>
+<div class="measurement-row">[08:03:06.130] Raw:  64.00cm | Kalm: 65.84cm | Mov: 65.60cm | RSSI: -65dBm [████] | PER: 35.5%</div>
+<div class="measurement-row">[08:03:06.329] Raw:  65.00cm | Kalm: 65.77cm | Mov: 65.43cm | RSSI: -65dBm [████] | PER: 35.1%</div>
+<div class="measurement-row">[08:03:06.529] Raw:  65.00cm | Kalm: 65.71cm | Mov: 65.30cm | RSSI: -65dBm [████] | PER: 34.7%</div>
+<div class="measurement-row">[08:03:06.729] Raw:  64.00cm | Kalm: 65.58cm | Mov: 65.07cm | RSSI: -62dBm [████] | PER: 34.4%</div>
+<div class="measurement-row">[08:03:06.929] Raw:  63.00cm | Kalm: 65.38cm | Mov: 64.90cm | RSSI: -63dBm [████] | PER: 34.0%</div>
+<div class="measurement-row">[08:03:07.130] Raw:  69.00cm | Kalm: 65.66cm | Mov: 65.10cm | RSSI: -66dBm [████] | PER: 33.7%</div>
+<div class="measurement-row">[08:03:07.329] Raw:  65.00cm | Kalm: 65.61cm | Mov: 65.23cm | RSSI: -65dBm [████] | PER: 33.3%</div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const ctx = document.getElementById('chart-1').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98],
+                            datasets: [
+                                {
+                                    label: 'Raw Data',
+                                    data: [67.0, 70.0, 66.0, 65.0, 64.0, 66.0, 68.0, 66.0, 65.0, 63.0, 64.0, 66.0, 62.0, 65.0, 66.0, 65.0, 66.0, 65.0, 64.0, 65.0, 65.0, 64.0, 63.0, 69.0, 65.0],
+                                    borderColor: '#adb5bd',
+                                    borderDash: [5, 5],
+                                    borderWidth: 1.5,
+                                    pointRadius: 2,
+                                    fill: false,
+                                    tension: 0
+                                },
+                                {
+                                    label: 'Kalman Filter',
+                                    data: [68.34, 68.47, 68.27, 68.02, 67.7, 67.57, 67.6, 67.48, 67.28, 66.95, 66.72, 66.66, 66.29, 66.19, 66.18, 66.09, 66.08, 65.99, 65.84, 65.77, 65.71, 65.58, 65.38, 65.66, 65.61],
+                                    borderColor: '#764ba2',
+                                    borderWidth: 2.5,
+                                    pointRadius: 3,
+                                    pointBackgroundColor: '#764ba2',
+                                    fill: false,
+                                    tension: 0.1
+                                },
+                                {
+                                    label: 'Média Móvel',
+                                    data: [69.6, 69.53, 69.27, 69.1, 68.73, 68.6, 68.43, 68.27, 68.1, 67.83, 67.53, 67.3, 66.93, 66.7, 66.6, 66.43, 66.2, 65.93, 65.6, 65.43, 65.3, 65.07, 64.9, 65.1, 65.23],
+                                    borderColor: '#20c997',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: false,
+                                    tension: 0.3
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'top', labels: { boxWidth: 12 } }
+                            },
+                            scales: {
+                                x: { display: true, title: { display: true, text: 'Block Index' } },
+                                y: { display: true, title: { display: true, text: 'Distance (cm)' } }
+                            }
+                        }
+                    });
+                });
+            </script>
+
+            <div class="capture">
+                <div class="capture-header">
+                    <div class="capture-title">📈 Janela de Captura #2</div>
+                    <div class="capture-health">
+                        <span>RSSI Médio: -63.0 dBm</span>
+                        <span>PER Médio: 0.0%</span>
+                    </div>
+                </div>
+                
+                <div id="modal-kalman-2" style="display: none;">
+        <p><strong>Filtro de Kalman (1D):</strong> Algoritmo de estimação preditiva. Diferente da Média Móvel, ele rastreia mudanças rapidamente sem introduzir arrasto mecânico pesado.</p>
+        <p><strong>Parâmetros (C Firmware):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10</li>
+            <li><strong>R (Ruído da Medição - Jitter):</strong> 15.00</li>
+        </ul>
+        <p>Oferece o melhor equilíbrio: variação contida (range muito menor que o bruto) e tempo de resposta instantâneo.</p>
+        </div>
+                <div id="modal-movavg-2" style="display: none;">
+        <p><strong>Média Móvel:</strong> Filtro passa-baixa básico que calcula a média aritmética das últimas <em>N</em> amostras (no seu firmware configurado para 30 leituras).</p>
+        <p><strong>Comportamento:</strong></p>
+        <ul>
+            <li>Suaviza o sinal e apresenta o <strong>menor range de variação</strong> matemático.</li>
+            <li><strong>Desvantagem (Lag):</strong> Introduz um atraso mecânico significativo. Mudanças rápidas na distância física demoram vários ciclos para refletir no valor.</li>
+        </ul>
+        </div>
+
+                <div class="capture-body">
+                    <div class="stats-panel">
+                        
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Filtro de Kalman (1D)
+                                <span class="info-icon" onclick="showModal('Filtro de Kalman', 'modal-kalman-2')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item highlight"><div class="stat-label">Média</div><div class="stat-value">63.80 cm</div></div>
+                                <div class="stat-item highlight"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">0.24 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">0.97 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">63.3 / 64.3</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Média Móvel (30 Leituras)
+                                <span class="info-icon" onclick="showModal('Média Móvel', 'modal-movavg-2')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">63.88 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">0.26 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">1.04 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">63.3 / 64.4</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">Sinal Bruto (Raw Data)</div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">63.44 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">1.73 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">5.00 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">61.0 / 66.0</div></div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="log-panel">
+                        <div class="chart-container">
+                            <canvas id="chart-2"></canvas>
+                        </div>
+                        
+                        <div class="measurements">
+<div class="measurement-row">[08:03:11.328] Raw:  66.00cm | Kalm: 64.26cm | Mov: 64.37cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:11.529] Raw:  63.00cm | Kalm: 64.17cm | Mov: 64.30cm | RSSI: -63dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:11.730] Raw:  62.00cm | Kalm: 64.00cm | Mov: 64.17cm | RSSI: -65dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:11.928] Raw:  66.00cm | Kalm: 64.15cm | Mov: 64.20cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:12.129] Raw:  62.00cm | Kalm: 63.98cm | Mov: 64.13cm | RSSI: -63dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:12.328] Raw:  62.00cm | Kalm: 63.83cm | Mov: 64.03cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:12.529] Raw:  62.00cm | Kalm: 63.69cm | Mov: 63.93cm | RSSI: -65dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:12.729] Raw:  65.00cm | Kalm: 63.79cm | Mov: 63.97cm | RSSI: -63dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:12.928] Raw:  62.00cm | Kalm: 63.65cm | Mov: 63.93cm | RSSI: -61dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:13.129] Raw:  65.00cm | Kalm: 63.75cm | Mov: 63.80cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:13.329] Raw:  66.00cm | Kalm: 63.93cm | Mov: 63.83cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:13.529] Raw:  65.00cm | Kalm: 64.01cm | Mov: 63.97cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:13.729] Raw:  63.00cm | Kalm: 63.93cm | Mov: 63.97cm | RSSI: -63dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:13.928] Raw:  61.00cm | Kalm: 63.70cm | Mov: 63.87cm | RSSI: -63dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:14.129] Raw:  65.00cm | Kalm: 63.81cm | Mov: 63.93cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:14.328] Raw:  63.00cm | Kalm: 63.74cm | Mov: 63.87cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:14.528] Raw:  65.00cm | Kalm: 63.84cm | Mov: 63.93cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:14.728] Raw:  66.00cm | Kalm: 64.01cm | Mov: 63.93cm | RSSI: -63dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:14.928] Raw:  61.00cm | Kalm: 63.77cm | Mov: 63.77cm | RSSI: -65dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:15.130] Raw:  64.00cm | Kalm: 63.79cm | Mov: 63.67cm | RSSI: -61dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:15.329] Raw:  63.00cm | Kalm: 63.73cm | Mov: 63.67cm | RSSI: -63dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:15.528] Raw:  61.00cm | Kalm: 63.52cm | Mov: 63.50cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:15.728] Raw:  62.00cm | Kalm: 63.40cm | Mov: 63.47cm | RSSI: -65dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:15.928] Raw:  62.00cm | Kalm: 63.29cm | Mov: 63.43cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:16.130] Raw:  64.00cm | Kalm: 63.34cm | Mov: 63.33cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const ctx = document.getElementById('chart-2').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142],
+                            datasets: [
+                                {
+                                    label: 'Raw Data',
+                                    data: [66.0, 63.0, 62.0, 66.0, 62.0, 62.0, 62.0, 65.0, 62.0, 65.0, 66.0, 65.0, 63.0, 61.0, 65.0, 63.0, 65.0, 66.0, 61.0, 64.0, 63.0, 61.0, 62.0, 62.0, 64.0],
+                                    borderColor: '#adb5bd',
+                                    borderDash: [5, 5],
+                                    borderWidth: 1.5,
+                                    pointRadius: 2,
+                                    fill: false,
+                                    tension: 0
+                                },
+                                {
+                                    label: 'Kalman Filter',
+                                    data: [64.26, 64.17, 64.0, 64.15, 63.98, 63.83, 63.69, 63.79, 63.65, 63.75, 63.93, 64.01, 63.93, 63.7, 63.81, 63.74, 63.84, 64.01, 63.77, 63.79, 63.73, 63.52, 63.4, 63.29, 63.34],
+                                    borderColor: '#764ba2',
+                                    borderWidth: 2.5,
+                                    pointRadius: 3,
+                                    pointBackgroundColor: '#764ba2',
+                                    fill: false,
+                                    tension: 0.1
+                                },
+                                {
+                                    label: 'Média Móvel',
+                                    data: [64.37, 64.3, 64.17, 64.2, 64.13, 64.03, 63.93, 63.97, 63.93, 63.8, 63.83, 63.97, 63.97, 63.87, 63.93, 63.87, 63.93, 63.93, 63.77, 63.67, 63.67, 63.5, 63.47, 63.43, 63.33],
+                                    borderColor: '#20c997',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: false,
+                                    tension: 0.3
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'top', labels: { boxWidth: 12 } }
+                            },
+                            scales: {
+                                x: { display: true, title: { display: true, text: 'Block Index' } },
+                                y: { display: true, title: { display: true, text: 'Distance (cm)' } }
+                            }
+                        }
+                    });
+                });
+            </script>
+
+            <div class="capture">
+                <div class="capture-header">
+                    <div class="capture-title">📈 Janela de Captura #3</div>
+                    <div class="capture-health">
+                        <span>RSSI Médio: -61.7 dBm</span>
+                        <span>PER Médio: 0.0%</span>
+                    </div>
+                </div>
+                
+                <div id="modal-kalman-3" style="display: none;">
+        <p><strong>Filtro de Kalman (1D):</strong> Algoritmo de estimação preditiva. Diferente da Média Móvel, ele rastreia mudanças rapidamente sem introduzir arrasto mecânico pesado.</p>
+        <p><strong>Parâmetros (C Firmware):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10</li>
+            <li><strong>R (Ruído da Medição - Jitter):</strong> 15.00</li>
+        </ul>
+        <p>Oferece o melhor equilíbrio: variação contida (range muito menor que o bruto) e tempo de resposta instantâneo.</p>
+        </div>
+                <div id="modal-movavg-3" style="display: none;">
+        <p><strong>Média Móvel:</strong> Filtro passa-baixa básico que calcula a média aritmética das últimas <em>N</em> amostras (no seu firmware configurado para 30 leituras).</p>
+        <p><strong>Comportamento:</strong></p>
+        <ul>
+            <li>Suaviza o sinal e apresenta o <strong>menor range de variação</strong> matemático.</li>
+            <li><strong>Desvantagem (Lag):</strong> Introduz um atraso mecânico significativo. Mudanças rápidas na distância física demoram vários ciclos para refletir no valor.</li>
+        </ul>
+        </div>
+
+                <div class="capture-body">
+                    <div class="stats-panel">
+                        
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Filtro de Kalman (1D)
+                                <span class="info-icon" onclick="showModal('Filtro de Kalman', 'modal-kalman-3')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item highlight"><div class="stat-label">Média</div><div class="stat-value">73.69 cm</div></div>
+                                <div class="stat-item highlight"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">0.88 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">3.09 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">71.9 / 75.0</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Média Móvel (30 Leituras)
+                                <span class="info-icon" onclick="showModal('Média Móvel', 'modal-movavg-3')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">73.40 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">1.98 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">6.94 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">69.1 / 76.1</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">Sinal Bruto (Raw Data)</div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">75.04 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">5.60 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">28.00 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">64.0 / 92.0</div></div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="log-panel">
+                        <div class="chart-container">
+                            <canvas id="chart-3"></canvas>
+                        </div>
+                        
+                        <div class="measurements">
+<div class="measurement-row">[08:03:20.928] Raw:  73.00cm | Kalm: 71.93cm | Mov: 69.13cm | RSSI: -59dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:21.127] Raw:  92.00cm | Kalm: 73.51cm | Mov: 70.07cm | RSSI: -68dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:21.328] Raw:  84.00cm | Kalm: 74.33cm | Mov: 70.77cm | RSSI: -61dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:21.529] Raw:  76.00cm | Kalm: 74.46cm | Mov: 71.27cm | RSSI: -57dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:21.729] Raw:  67.00cm | Kalm: 73.87cm | Mov: 71.43cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:21.928] Raw:  64.00cm | Kalm: 73.10cm | Mov: 71.50cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:22.127] Raw:  74.00cm | Kalm: 73.17cm | Mov: 71.83cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:22.328] Raw:  70.00cm | Kalm: 72.92cm | Mov: 72.10cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:22.528] Raw:  77.00cm | Kalm: 73.24cm | Mov: 72.63cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:22.728] Raw:  73.00cm | Kalm: 73.22cm | Mov: 72.87cm | RSSI: -63dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:22.928] Raw:  68.00cm | Kalm: 72.81cm | Mov: 73.07cm | RSSI: -61dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:23.127] Raw:  70.00cm | Kalm: 72.59cm | Mov: 73.27cm | RSSI: -63dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:23.329] Raw:  75.00cm | Kalm: 72.78cm | Mov: 73.67cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:23.528] Raw:  73.00cm | Kalm: 72.80cm | Mov: 73.90cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:23.728] Raw:  75.00cm | Kalm: 72.97cm | Mov: 74.13cm | RSSI: -60dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:23.928] Raw:  78.00cm | Kalm: 73.37cm | Mov: 74.30cm | RSSI: -60dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:24.128] Raw:  79.00cm | Kalm: 73.81cm | Mov: 74.87cm | RSSI: -61dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:24.328] Raw:  77.00cm | Kalm: 74.06cm | Mov: 75.07cm | RSSI: -61dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:24.529] Raw:  79.00cm | Kalm: 74.45cm | Mov: 75.37cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:24.728] Raw:  74.00cm | Kalm: 74.41cm | Mov: 75.53cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:24.928] Raw:  79.00cm | Kalm: 74.77cm | Mov: 75.77cm | RSSI: -60dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:25.128] Raw:  78.00cm | Kalm: 75.02cm | Mov: 76.07cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:25.329] Raw:  74.00cm | Kalm: 74.94cm | Mov: 75.67cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:25.528] Raw:  75.00cm | Kalm: 74.95cm | Mov: 75.40cm | RSSI: -61dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:25.728] Raw:  72.00cm | Kalm: 74.72cm | Mov: 75.23cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const ctx = document.getElementById('chart-3').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190],
+                            datasets: [
+                                {
+                                    label: 'Raw Data',
+                                    data: [73.0, 92.0, 84.0, 76.0, 67.0, 64.0, 74.0, 70.0, 77.0, 73.0, 68.0, 70.0, 75.0, 73.0, 75.0, 78.0, 79.0, 77.0, 79.0, 74.0, 79.0, 78.0, 74.0, 75.0, 72.0],
+                                    borderColor: '#adb5bd',
+                                    borderDash: [5, 5],
+                                    borderWidth: 1.5,
+                                    pointRadius: 2,
+                                    fill: false,
+                                    tension: 0
+                                },
+                                {
+                                    label: 'Kalman Filter',
+                                    data: [71.93, 73.51, 74.33, 74.46, 73.87, 73.1, 73.17, 72.92, 73.24, 73.22, 72.81, 72.59, 72.78, 72.8, 72.97, 73.37, 73.81, 74.06, 74.45, 74.41, 74.77, 75.02, 74.94, 74.95, 74.72],
+                                    borderColor: '#764ba2',
+                                    borderWidth: 2.5,
+                                    pointRadius: 3,
+                                    pointBackgroundColor: '#764ba2',
+                                    fill: false,
+                                    tension: 0.1
+                                },
+                                {
+                                    label: 'Média Móvel',
+                                    data: [69.13, 70.07, 70.77, 71.27, 71.43, 71.5, 71.83, 72.1, 72.63, 72.87, 73.07, 73.27, 73.67, 73.9, 74.13, 74.3, 74.87, 75.07, 75.37, 75.53, 75.77, 76.07, 75.67, 75.4, 75.23],
+                                    borderColor: '#20c997',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: false,
+                                    tension: 0.3
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'top', labels: { boxWidth: 12 } }
+                            },
+                            scales: {
+                                x: { display: true, title: { display: true, text: 'Block Index' } },
+                                y: { display: true, title: { display: true, text: 'Distance (cm)' } }
+                            }
+                        }
+                    });
+                });
+            </script>
+
+            <div class="capture">
+                <div class="capture-header">
+                    <div class="capture-title">📈 Janela de Captura #4</div>
+                    <div class="capture-health">
+                        <span>RSSI Médio: -60.5 dBm</span>
+                        <span>PER Médio: 0.0%</span>
+                    </div>
+                </div>
+                
+                <div id="modal-kalman-4" style="display: none;">
+        <p><strong>Filtro de Kalman (1D):</strong> Algoritmo de estimação preditiva. Diferente da Média Móvel, ele rastreia mudanças rapidamente sem introduzir arrasto mecânico pesado.</p>
+        <p><strong>Parâmetros (C Firmware):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10</li>
+            <li><strong>R (Ruído da Medição - Jitter):</strong> 15.00</li>
+        </ul>
+        <p>Oferece o melhor equilíbrio: variação contida (range muito menor que o bruto) e tempo de resposta instantâneo.</p>
+        </div>
+                <div id="modal-movavg-4" style="display: none;">
+        <p><strong>Média Móvel:</strong> Filtro passa-baixa básico que calcula a média aritmética das últimas <em>N</em> amostras (no seu firmware configurado para 30 leituras).</p>
+        <p><strong>Comportamento:</strong></p>
+        <ul>
+            <li>Suaviza o sinal e apresenta o <strong>menor range de variação</strong> matemático.</li>
+            <li><strong>Desvantagem (Lag):</strong> Introduz um atraso mecânico significativo. Mudanças rápidas na distância física demoram vários ciclos para refletir no valor.</li>
+        </ul>
+        </div>
+
+                <div class="capture-body">
+                    <div class="stats-panel">
+                        
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Filtro de Kalman (1D)
+                                <span class="info-icon" onclick="showModal('Filtro de Kalman', 'modal-kalman-4')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item highlight"><div class="stat-label">Média</div><div class="stat-value">78.64 cm</div></div>
+                                <div class="stat-item highlight"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">0.94 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">3.30 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">76.5 / 79.8</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Média Móvel (30 Leituras)
+                                <span class="info-icon" onclick="showModal('Média Móvel', 'modal-movavg-4')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">78.09 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">1.23 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">4.43 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">75.6 / 80.0</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">Sinal Bruto (Raw Data)</div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">80.36 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">3.98 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">20.00 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">70.0 / 90.0</div></div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="log-panel">
+                        <div class="chart-container">
+                            <canvas id="chart-4"></canvas>
+                        </div>
+                        
+                        <div class="measurements">
+<div class="measurement-row">[08:03:28.128] Raw:  84.00cm | Kalm: 76.50cm | Mov: 75.60cm | RSSI: -60dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:28.328] Raw:  79.00cm | Kalm: 76.70cm | Mov: 75.90cm | RSSI: -60dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:28.527] Raw:  80.00cm | Kalm: 76.96cm | Mov: 76.00cm | RSSI: -59dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:28.728] Raw:  90.00cm | Kalm: 77.98cm | Mov: 76.57cm | RSSI: -58dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:28.928] Raw:  77.00cm | Kalm: 77.90cm | Mov: 76.87cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:29.127] Raw:  77.00cm | Kalm: 77.83cm | Mov: 77.10cm | RSSI: -59dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:29.328] Raw:  79.00cm | Kalm: 77.92cm | Mov: 77.23cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:29.527] Raw:  83.00cm | Kalm: 78.32cm | Mov: 77.57cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:29.728] Raw:  82.00cm | Kalm: 78.61cm | Mov: 77.80cm | RSSI: -61dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:29.928] Raw:  84.00cm | Kalm: 79.03cm | Mov: 78.00cm | RSSI: -59dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:30.128] Raw:  79.00cm | Kalm: 79.03cm | Mov: 78.00cm | RSSI: -58dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:30.328] Raw:  83.00cm | Kalm: 79.34cm | Mov: 78.20cm | RSSI: -60dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:30.527] Raw:  81.00cm | Kalm: 79.47cm | Mov: 78.27cm | RSSI: -59dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:30.728] Raw:  81.00cm | Kalm: 79.59cm | Mov: 78.50cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:30.928] Raw:  81.00cm | Kalm: 79.70cm | Mov: 78.57cm | RSSI: -58dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:31.128] Raw:  81.00cm | Kalm: 79.80cm | Mov: 78.67cm | RSSI: -59dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:31.328] Raw:  79.00cm | Kalm: 79.74cm | Mov: 78.83cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:31.527] Raw:  70.00cm | Kalm: 78.98cm | Mov: 78.67cm | RSSI: -63dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:31.728] Raw:  73.00cm | Kalm: 78.51cm | Mov: 78.70cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:31.928] Raw:  79.00cm | Kalm: 78.55cm | Mov: 78.90cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:32.128] Raw:  84.00cm | Kalm: 78.97cm | Mov: 79.33cm | RSSI: -59dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:32.328] Raw:  76.00cm | Kalm: 78.74cm | Mov: 79.37cm | RSSI: -60dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:32.527] Raw:  81.00cm | Kalm: 78.92cm | Mov: 79.60cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:32.728] Raw:  84.00cm | Kalm: 79.32cm | Mov: 79.93cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:32.928] Raw:  82.00cm | Kalm: 79.53cm | Mov: 80.03cm | RSSI: -60dBm [████] | PER: 0.0%</div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const ctx = document.getElementById('chart-4').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226],
+                            datasets: [
+                                {
+                                    label: 'Raw Data',
+                                    data: [84.0, 79.0, 80.0, 90.0, 77.0, 77.0, 79.0, 83.0, 82.0, 84.0, 79.0, 83.0, 81.0, 81.0, 81.0, 81.0, 79.0, 70.0, 73.0, 79.0, 84.0, 76.0, 81.0, 84.0, 82.0],
+                                    borderColor: '#adb5bd',
+                                    borderDash: [5, 5],
+                                    borderWidth: 1.5,
+                                    pointRadius: 2,
+                                    fill: false,
+                                    tension: 0
+                                },
+                                {
+                                    label: 'Kalman Filter',
+                                    data: [76.5, 76.7, 76.96, 77.98, 77.9, 77.83, 77.92, 78.32, 78.61, 79.03, 79.03, 79.34, 79.47, 79.59, 79.7, 79.8, 79.74, 78.98, 78.51, 78.55, 78.97, 78.74, 78.92, 79.32, 79.53],
+                                    borderColor: '#764ba2',
+                                    borderWidth: 2.5,
+                                    pointRadius: 3,
+                                    pointBackgroundColor: '#764ba2',
+                                    fill: false,
+                                    tension: 0.1
+                                },
+                                {
+                                    label: 'Média Móvel',
+                                    data: [75.6, 75.9, 76.0, 76.57, 76.87, 77.1, 77.23, 77.57, 77.8, 78.0, 78.0, 78.2, 78.27, 78.5, 78.57, 78.67, 78.83, 78.67, 78.7, 78.9, 79.33, 79.37, 79.6, 79.93, 80.03],
+                                    borderColor: '#20c997',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: false,
+                                    tension: 0.3
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'top', labels: { boxWidth: 12 } }
+                            },
+                            scales: {
+                                x: { display: true, title: { display: true, text: 'Block Index' } },
+                                y: { display: true, title: { display: true, text: 'Distance (cm)' } }
+                            }
+                        }
+                    });
+                });
+            </script>
+
+            <div class="capture">
+                <div class="capture-header">
+                    <div class="capture-title">📈 Janela de Captura #5</div>
+                    <div class="capture-health">
+                        <span>RSSI Médio: -64.6 dBm</span>
+                        <span>PER Médio: 0.0%</span>
+                    </div>
+                </div>
+                
+                <div id="modal-kalman-5" style="display: none;">
+        <p><strong>Filtro de Kalman (1D):</strong> Algoritmo de estimação preditiva. Diferente da Média Móvel, ele rastreia mudanças rapidamente sem introduzir arrasto mecânico pesado.</p>
+        <p><strong>Parâmetros (C Firmware):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10</li>
+            <li><strong>R (Ruído da Medição - Jitter):</strong> 15.00</li>
+        </ul>
+        <p>Oferece o melhor equilíbrio: variação contida (range muito menor que o bruto) e tempo de resposta instantâneo.</p>
+        </div>
+                <div id="modal-movavg-5" style="display: none;">
+        <p><strong>Média Móvel:</strong> Filtro passa-baixa básico que calcula a média aritmética das últimas <em>N</em> amostras (no seu firmware configurado para 30 leituras).</p>
+        <p><strong>Comportamento:</strong></p>
+        <ul>
+            <li>Suaviza o sinal e apresenta o <strong>menor range de variação</strong> matemático.</li>
+            <li><strong>Desvantagem (Lag):</strong> Introduz um atraso mecânico significativo. Mudanças rápidas na distância física demoram vários ciclos para refletir no valor.</li>
+        </ul>
+        </div>
+
+                <div class="capture-body">
+                    <div class="stats-panel">
+                        
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Filtro de Kalman (1D)
+                                <span class="info-icon" onclick="showModal('Filtro de Kalman', 'modal-kalman-5')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item highlight"><div class="stat-label">Média</div><div class="stat-value">78.16 cm</div></div>
+                                <div class="stat-item highlight"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">0.76 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">2.61 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">76.9 / 79.5</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Média Móvel (30 Leituras)
+                                <span class="info-icon" onclick="showModal('Média Móvel', 'modal-movavg-5')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">78.96 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">1.10 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">3.67 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">76.4 / 80.1</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">Sinal Bruto (Raw Data)</div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">76.72 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">2.01 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">9.00 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">73.0 / 82.0</div></div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="log-panel">
+                        <div class="chart-container">
+                            <canvas id="chart-5"></canvas>
+                        </div>
+                        
+                        <div class="measurements">
+<div class="measurement-row">[08:03:38.328] Raw:  74.00cm | Kalm: 79.50cm | Mov: 80.07cm | RSSI: -68dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:38.527] Raw:  77.00cm | Kalm: 79.30cm | Mov: 79.93cm | RSSI: -63dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:38.727] Raw:  78.00cm | Kalm: 79.20cm | Mov: 79.73cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:38.927] Raw:  77.00cm | Kalm: 79.03cm | Mov: 79.57cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:39.127] Raw:  76.00cm | Kalm: 78.79cm | Mov: 79.33cm | RSSI: -68dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:39.328] Raw:  74.00cm | Kalm: 78.42cm | Mov: 79.07cm | RSSI: -68dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:39.527] Raw:  81.00cm | Kalm: 78.62cm | Mov: 79.00cm | RSSI: -63dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:39.727] Raw:  82.00cm | Kalm: 78.88cm | Mov: 79.47cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:39.927] Raw:  78.00cm | Kalm: 78.81cm | Mov: 79.13cm | RSSI: -66dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:40.127] Raw:  76.00cm | Kalm: 78.59cm | Mov: 79.33cm | RSSI: -66dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:40.328] Raw:  76.00cm | Kalm: 78.39cm | Mov: 79.53cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:40.527] Raw:  77.00cm | Kalm: 78.28cm | Mov: 79.50cm | RSSI: -68dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:40.727] Raw:  78.00cm | Kalm: 78.26cm | Mov: 79.90cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:40.927] Raw:  77.00cm | Kalm: 78.16cm | Mov: 79.90cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:41.127] Raw:  77.00cm | Kalm: 78.07cm | Mov: 79.83cm | RSSI: -66dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:41.327] Raw:  77.00cm | Kalm: 77.99cm | Mov: 79.60cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:41.527] Raw:  74.00cm | Kalm: 77.67cm | Mov: 79.47cm | RSSI: -66dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:41.727] Raw:  78.00cm | Kalm: 77.70cm | Mov: 79.23cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:41.927] Raw:  75.00cm | Kalm: 77.49cm | Mov: 78.67cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:42.128] Raw:  77.00cm | Kalm: 77.45cm | Mov: 78.23cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:42.327] Raw:  75.00cm | Kalm: 77.26cm | Mov: 78.17cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:42.527] Raw:  77.00cm | Kalm: 77.24cm | Mov: 78.07cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:42.728] Raw:  77.00cm | Kalm: 77.22cm | Mov: 76.47cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:42.927] Raw:  73.00cm | Kalm: 76.89cm | Mov: 76.40cm | RSSI: -66dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:43.127] Raw:  77.00cm | Kalm: 76.90cm | Mov: 76.43cm | RSSI: -64dBm [████] | PER: 0.0%</div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const ctx = document.getElementById('chart-5').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277],
+                            datasets: [
+                                {
+                                    label: 'Raw Data',
+                                    data: [74.0, 77.0, 78.0, 77.0, 76.0, 74.0, 81.0, 82.0, 78.0, 76.0, 76.0, 77.0, 78.0, 77.0, 77.0, 77.0, 74.0, 78.0, 75.0, 77.0, 75.0, 77.0, 77.0, 73.0, 77.0],
+                                    borderColor: '#adb5bd',
+                                    borderDash: [5, 5],
+                                    borderWidth: 1.5,
+                                    pointRadius: 2,
+                                    fill: false,
+                                    tension: 0
+                                },
+                                {
+                                    label: 'Kalman Filter',
+                                    data: [79.5, 79.3, 79.2, 79.03, 78.79, 78.42, 78.62, 78.88, 78.81, 78.59, 78.39, 78.28, 78.26, 78.16, 78.07, 77.99, 77.67, 77.7, 77.49, 77.45, 77.26, 77.24, 77.22, 76.89, 76.9],
+                                    borderColor: '#764ba2',
+                                    borderWidth: 2.5,
+                                    pointRadius: 3,
+                                    pointBackgroundColor: '#764ba2',
+                                    fill: false,
+                                    tension: 0.1
+                                },
+                                {
+                                    label: 'Média Móvel',
+                                    data: [80.07, 79.93, 79.73, 79.57, 79.33, 79.07, 79.0, 79.47, 79.13, 79.33, 79.53, 79.5, 79.9, 79.9, 79.83, 79.6, 79.47, 79.23, 78.67, 78.23, 78.17, 78.07, 76.47, 76.4, 76.43],
+                                    borderColor: '#20c997',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: false,
+                                    tension: 0.3
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'top', labels: { boxWidth: 12 } }
+                            },
+                            scales: {
+                                x: { display: true, title: { display: true, text: 'Block Index' } },
+                                y: { display: true, title: { display: true, text: 'Distance (cm)' } }
+                            }
+                        }
+                    });
+                });
+            </script>
+
+            <div class="capture">
+                <div class="capture-header">
+                    <div class="capture-title">📈 Janela de Captura #6</div>
+                    <div class="capture-health">
+                        <span>RSSI Médio: -61.4 dBm</span>
+                        <span>PER Médio: 0.0%</span>
+                    </div>
+                </div>
+                
+                <div id="modal-kalman-6" style="display: none;">
+        <p><strong>Filtro de Kalman (1D):</strong> Algoritmo de estimação preditiva. Diferente da Média Móvel, ele rastreia mudanças rapidamente sem introduzir arrasto mecânico pesado.</p>
+        <p><strong>Parâmetros (C Firmware):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10</li>
+            <li><strong>R (Ruído da Medição - Jitter):</strong> 15.00</li>
+        </ul>
+        <p>Oferece o melhor equilíbrio: variação contida (range muito menor que o bruto) e tempo de resposta instantâneo.</p>
+        </div>
+                <div id="modal-movavg-6" style="display: none;">
+        <p><strong>Média Móvel:</strong> Filtro passa-baixa básico que calcula a média aritmética das últimas <em>N</em> amostras (no seu firmware configurado para 30 leituras).</p>
+        <p><strong>Comportamento:</strong></p>
+        <ul>
+            <li>Suaviza o sinal e apresenta o <strong>menor range de variação</strong> matemático.</li>
+            <li><strong>Desvantagem (Lag):</strong> Introduz um atraso mecânico significativo. Mudanças rápidas na distância física demoram vários ciclos para refletir no valor.</li>
+        </ul>
+        </div>
+
+                <div class="capture-body">
+                    <div class="stats-panel">
+                        
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Filtro de Kalman (1D)
+                                <span class="info-icon" onclick="showModal('Filtro de Kalman', 'modal-kalman-6')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item highlight"><div class="stat-label">Média</div><div class="stat-value">79.69 cm</div></div>
+                                <div class="stat-item highlight"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">0.80 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">2.96 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">77.5 / 80.5</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Média Móvel (30 Leituras)
+                                <span class="info-icon" onclick="showModal('Média Móvel', 'modal-movavg-6')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">78.93 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">1.18 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">3.90 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">76.8 / 80.7</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">Sinal Bruto (Raw Data)</div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">81.12 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">1.94 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">8.00 cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">77.0 / 85.0</div></div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="log-panel">
+                        <div class="chart-container">
+                            <canvas id="chart-6"></canvas>
+                        </div>
+                        
+                        <div class="measurements">
+<div class="measurement-row">[08:03:45.927] Raw:  80.00cm | Kalm: 77.52cm | Mov: 76.83cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:46.127] Raw:  81.00cm | Kalm: 77.79cm | Mov: 77.00cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:46.327] Raw:  85.00cm | Kalm: 78.36cm | Mov: 77.30cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:46.527] Raw:  84.00cm | Kalm: 78.80cm | Mov: 77.53cm | RSSI: -61dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:46.728] Raw:  82.00cm | Kalm: 79.05cm | Mov: 77.67cm | RSSI: -60dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:46.927] Raw:  82.00cm | Kalm: 79.28cm | Mov: 77.83cm | RSSI: -58dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:47.127] Raw:  83.00cm | Kalm: 79.57cm | Mov: 78.03cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:47.327] Raw:  80.00cm | Kalm: 79.61cm | Mov: 78.13cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:47.528] Raw:  83.00cm | Kalm: 79.87cm | Mov: 78.43cm | RSSI: -60dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:47.725] Raw:  81.00cm | Kalm: 79.96cm | Mov: 78.53cm | RSSI: -60dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:47.927] Raw:  81.00cm | Kalm: 80.04cm | Mov: 78.73cm | RSSI: -59dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:48.127] Raw:  83.00cm | Kalm: 80.27cm | Mov: 78.93cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:48.328] Raw:  78.00cm | Kalm: 80.10cm | Mov: 79.03cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:48.527] Raw:  79.00cm | Kalm: 80.01cm | Mov: 79.10cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:48.726] Raw:  79.00cm | Kalm: 79.93cm | Mov: 79.17cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:48.927] Raw:  79.00cm | Kalm: 79.86cm | Mov: 79.37cm | RSSI: -60dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:49.127] Raw:  82.00cm | Kalm: 80.03cm | Mov: 79.53cm | RSSI: -61dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:49.327] Raw:  80.00cm | Kalm: 80.02cm | Mov: 79.63cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:49.527] Raw:  82.00cm | Kalm: 80.18cm | Mov: 79.83cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:49.726] Raw:  84.00cm | Kalm: 80.48cm | Mov: 80.17cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:49.927] Raw:  80.00cm | Kalm: 80.44cm | Mov: 80.23cm | RSSI: -61dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:50.127] Raw:  77.00cm | Kalm: 80.17cm | Mov: 80.33cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:50.327] Raw:  81.00cm | Kalm: 80.24cm | Mov: 80.47cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:50.528] Raw:  81.00cm | Kalm: 80.30cm | Mov: 80.67cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+<div class="measurement-row">[08:03:50.726] Raw:  81.00cm | Kalm: 80.35cm | Mov: 80.73cm | RSSI: -62dBm [████] | PER: 0.0%</div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const ctx = document.getElementById('chart-6').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315],
+                            datasets: [
+                                {
+                                    label: 'Raw Data',
+                                    data: [80.0, 81.0, 85.0, 84.0, 82.0, 82.0, 83.0, 80.0, 83.0, 81.0, 81.0, 83.0, 78.0, 79.0, 79.0, 79.0, 82.0, 80.0, 82.0, 84.0, 80.0, 77.0, 81.0, 81.0, 81.0],
+                                    borderColor: '#adb5bd',
+                                    borderDash: [5, 5],
+                                    borderWidth: 1.5,
+                                    pointRadius: 2,
+                                    fill: false,
+                                    tension: 0
+                                },
+                                {
+                                    label: 'Kalman Filter',
+                                    data: [77.52, 77.79, 78.36, 78.8, 79.05, 79.28, 79.57, 79.61, 79.87, 79.96, 80.04, 80.27, 80.1, 80.01, 79.93, 79.86, 80.03, 80.02, 80.18, 80.48, 80.44, 80.17, 80.24, 80.3, 80.35],
+                                    borderColor: '#764ba2',
+                                    borderWidth: 2.5,
+                                    pointRadius: 3,
+                                    pointBackgroundColor: '#764ba2',
+                                    fill: false,
+                                    tension: 0.1
+                                },
+                                {
+                                    label: 'Média Móvel',
+                                    data: [76.83, 77.0, 77.3, 77.53, 77.67, 77.83, 78.03, 78.13, 78.43, 78.53, 78.73, 78.93, 79.03, 79.1, 79.17, 79.37, 79.53, 79.63, 79.83, 80.17, 80.23, 80.33, 80.47, 80.67, 80.73],
+                                    borderColor: '#20c997',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: false,
+                                    tension: 0.3
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'top', labels: { boxWidth: 12 } }
+                            },
+                            scales: {
+                                x: { display: true, title: { display: true, text: 'Block Index' } },
+                                y: { display: true, title: { display: true, text: 'Distance (cm)' } }
+                            }
+                        }
+                    });
+                });
+            </script>
+
+        </div>
+        
+        <div class="footer">
+            <p>Gerado em: 2026-06-23 08:03:54</p>
+            <p>Total de Capturas: 6 | Total de Medições: 299</p>
+            <p>Duração da Sessão: 63.1 segundos</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -3,25 +3,6 @@
 
 """
 Live UWB Measurement Monitor with Silent Capture
-
-Real-time monitoring of serial port with ability to capture 5-second windows.
-Results saved to HTML report at the end.
-
-Features:
-- Real-time display of measurements from port COM
-- Silent capture: Press ',' to record 5-second windows (25 blocks)
-- Multiple captures per session
-- HTML report with all analyses
-- Clean, minimalist terminal display
-
-Usage:
-    python live_monitor.py --port COM3
-    python live_monitor.py --port COM3 --baudrate 921600
-
-Controls:
-    ','  (comma)  : Capture 5-second window (silent)
-    's'           : Save and generate HTML report
-    'q' / ESC     : Exit and save report
 """
 
 import sys
@@ -29,6 +10,7 @@ import os
 import serial
 import threading
 import time
+import json
 from datetime import datetime
 from pathlib import Path
 from collections import defaultdict
@@ -69,11 +51,11 @@ class LiveMonitor:
         self.session_start = datetime.now()
         self.line_count = 0
         
-        # Buffer for multi-line parsing
+        # CORREÇÃO: Inicialização do timestamp para evitar AttributeError
+        self.last_timestamp = None
         self.line_buffer = ""
     
     def open_port(self):
-        """Open serial port"""
         try:
             self.ser = serial.Serial(self.port, self.baudrate, timeout=1)
             print(f"✓ Connected to {self.port} at {self.baudrate} baud")
@@ -83,50 +65,37 @@ class LiveMonitor:
             return False
     
     def _extract_distance(self, data):
-        """Extract distance value from measurement string"""
         patterns = [
-            r'distance\[cm\]=([\d.]+)',  # Captura em cm
-            r'distance_bruta\[cm\]=([\d.-]+)', # Captura do print atualizado do C
-            r'Distance:\s*([\d.]+)\s*m', # Captura em metros
+            r'distance\[cm\]=([\d.]+)',
+            r'distance_bruta\[cm\]=([\d.-]+)',
+            r'Distance:\s*([\d.]+)\s*m',
             r'X=([\d.]+)',
             r'(\d+),(-?\d+),\d+,OK'
         ]
-        
         for pattern in patterns:
             match = re.search(pattern, data)
             if match:
                 val = float(match.group(1))
-                
-                # Se o padrão lido for explicitamente em Metros, converte para CM
                 if pattern == r'Distance:\s*([\d.]+)\s*m':
                     val = val * 100.0
-                
-                # Retorna o valor direto em Centímetros (Removida a divisão!)
                 return val
         return None
 
     def _extract_kalman(self, data):
-        """Extract Kalman filter distance"""
         match = re.search(r'kalman\[cm\]=([\d.-]+)', data)
         return float(match.group(1)) if match else None
 
-    def _extract_media(self, data):
-        """Extract media (average) distance"""
-        match = re.search(r'media\[cm\]=([\d.]+)', data)
-        if match:
-            # Retorna o valor direto (Removida a divisão por 100.0!)
-            return float(match.group(1)) 
-        return None
+    def _extract_media_movel(self, data):
+        match = re.search(r'media_movel\[cm\]=([\d.-]+)', data)
+        return float(match.group(1)) if match else None
     
     def _extract_rssi(self, data):
-        """Extract RSSI value"""
         patterns = [
-            r'RSSI\[dBm\]=([-?\d.]+)',  # NEW: RSSI[dBm]=-59.5
+            r'RSSI\[dBm\]=([-?\d.]+)',
             r'RSSI:\s*(-?\d+)\s*dBm',
             r'Y=([\d.]+)',
             r'(\d+),(-?\d+),\d+,OK'
         ]
-        
         for pattern in patterns:
             match = re.search(pattern, data)
             if match:
@@ -134,27 +103,35 @@ class LiveMonitor:
         return None
     
     def _extract_per(self, data):
-        """Extract Packet Error Rate"""
         match = re.search(r'PER=([\d.]+)', data)
         return float(match.group(1)) if match else None
     
     def _extract_block_index(self, data):
-        """Extract block index number"""
         match = re.search(r'block_index=(\d+)', data)
         return int(match.group(1)) if match else None
+        
+    def _get_rssi_bars(self, rssi):
+        if rssi is None:
+            return "[    ]"
+        if rssi >= -75:
+            return "[████]"
+        elif rssi >= -82:
+            return "[███ ]"
+        elif rssi >= -90:
+            return "[██  ]"
+        else:
+            return "[█   ]"
     
     def print_header(self):
-        """Print clean header"""
-        print("\n" + "="*90)
+        print("\n" + "="*105)
         print("🔴 LIVE MEASUREMENT MONITOR - DWM3001CDK")
-        print("="*90)
+        print("="*105)
         print(f"Port: {self.port} | Baudrate: {self.baudrate} | Session: {self.session_start.strftime('%Y-%m-%d %H:%M:%S')}")
-        print("-"*90)
+        print("-"*105)
         print("Controls:  ',' = Capture Window  |  's' = Save Report  |  'q/ESC' = Exit")
-        print("="*90 + "\n")
+        print("="*105 + "\n")
     
     def on_key_press(self, key):
-        """Handle keyboard input"""
         try:
             if key == keyboard.Key.esc or str(key) == "'q'":
                 self.exit_flag = True
@@ -166,15 +143,13 @@ class LiveMonitor:
             pass
     
     def capture_window(self):
-        """Capture 5 seconds of measurements"""
         window_measurements = []
         capture_start = time.time()
         
         while time.time() - capture_start < 5.0:
             if self.all_measurements:
-                # Get measurements added during this window
                 if len(self.all_measurements) > len(window_measurements):
-                    window_measurements = self.all_measurements[-25:]  # Last 25 blocks
+                    window_measurements = self.all_measurements[-25:]
             time.sleep(0.05)
         
         if window_measurements:
@@ -184,7 +159,6 @@ class LiveMonitor:
             }
             self.captures.append(capture_data)
             
-            # Display result
             distances = [m['distance'] for m in window_measurements if m['distance'] is not None]
             if distances:
                 stats = self._calculate_stats(distances)
@@ -193,237 +167,128 @@ class LiveMonitor:
                       f"σ={stats['std']:.2f}cm\n")
         
         self.capture_active = False
-    
-    def _create_kalman_details(self, kalman_mean):
-        """Create detailed explanation for the Kalman Filter modal"""
-        return f"""
-        <p><strong>Filtro de Kalman (1D):</strong> Um algoritmo de estimação de estado projetado para mitigar o jitter (ruído de medição) inerente ao UWB, fornecendo uma leitura de distância mais suave e estável.</p>
-        <p><strong>Parâmetros configurados (Firmware C):</strong></p>
-        <ul>
-            <li><strong>Q (Ruído do Processo):</strong> 0.10 (Define a agilidade de rastreio)</li>
-            <li><strong>R (Ruído da Medição):</strong> 15.00 (Incerteza/Jitter natural do UWB)</li>
-        </ul>
-        <br/>
-        <p><strong>Ciclo Matemático do Filtro:</strong></p>
-        <div class="formula">
-        <strong>1. Previsão da Incerteza:</strong><br/>
-        &nbsp;&nbsp;&nbsp;p = p + Q<br/><br/>
-        <strong>2. Ganho de Kalman (K):</strong><br/>
-        &nbsp;&nbsp;&nbsp;K = p / (p + R)<br/>
-        &nbsp;&nbsp;&nbsp;<small><i>*Determina se confia mais na medição atual ou na estimativa anterior.</i></small><br/><br/>
-        <strong>3. Atualização do Estado (Distância Filtrada):</strong><br/>
-        &nbsp;&nbsp;&nbsp;Est = Est + K * (Medição_Bruta - Est)<br/><br/>
-        <strong>4. Atualização da Incerteza:</strong><br/>
-        &nbsp;&nbsp;&nbsp;p = (1 - K) * p
-        </div>
-        <p>A média dos valores já <strong>filtrados pelo Kalman</strong> nesta janela foi de <strong>{kalman_mean:.2f} cm</strong>.</p>
-        """
 
-    def _create_calculation_details(self, stats):
-        """Create detailed calculation explanation for modal"""
-        values = stats['values']
-        sorted_values = np.sort(values)
-        n = len(values)
-        
-        # Minimum explanation
-        min_detail = f"""
-        <p><strong>Mínimo:</strong> O menor valor encontrado nos {n} blocos coletados.</p>
-        <div class="formula">
-        min = {stats['min']:.2f} cm (Valor #{sorted_values.tolist().index(stats['min']) + 1})
-        </div>
-        <p>Este é o melhor resultado que você conseguiu durante esta janela.</p>
+    def _create_moving_avg_details(self):
+        return """
+        <p><strong>Média Móvel:</strong> Filtro passa-baixa básico que calcula a média aritmética das últimas <em>N</em> amostras (no seu firmware configurado para 30 leituras).</p>
+        <p><strong>Comportamento:</strong></p>
+        <ul>
+            <li>Suaviza o sinal e apresenta o <strong>menor range de variação</strong> matemático.</li>
+            <li><strong>Desvantagem (Lag):</strong> Introduz um atraso mecânico significativo. Mudanças rápidas na distância física demoram vários ciclos para refletir no valor.</li>
+        </ul>
         """
-        
-        # Maximum explanation
-        max_detail = f"""
-        <p><strong>Máximo:</strong> O maior valor encontrado nos {n} blocos coletados.</p>
-        <div class="formula">
-        max = {stats['max']:.2f} cm (Valor #{sorted_values.tolist().index(stats['max']) + 1})
-        </div>
-        <p>Este é o pior resultado que você conseguiu durante esta janela.</p>
+    
+    def _create_kalman_details(self):
+        return """
+        <p><strong>Filtro de Kalman (1D):</strong> Algoritmo de estimação preditiva. Permanente e dinâmico, ele rastreia mudanças rapidamente sem introduzir arrasto mecânico pesado.</p>
+        <p><strong>Parâmetros (C Firmware):</strong></p>
+        <ul>
+            <li><strong>Q (Ruído do Processo):</strong> 0.10</li>
+            <li><strong>R (Ruído da Medição - Jitter):</strong> 15.00</li>
+        </ul>
+        <p>Oferece o melhor equilíbrio: variação contida (range muito menor que o bruto) e tempo de resposta instantâneo.</p>
         """
-        
-        # Mean explanation
-        mean_detail = f"""
-        <p><strong>Média (Mean):</strong> A soma de todos os valores dividida pelo número de amostras.</p>
-        <div class="formula">
-        Σ(valores) / N = ({' + '.join([f'{v:.2f}' for v in values[:5]])}{' + ...' if n > 5 else ''}) / {n}<br/>
-        = {np.sum(values):.2f} / {n}<br/>
-        = {stats['mean']:.2f} cm
-        </div>
-        <p>Representa o valor "típico" ou central da sua medição bruta.</p>
-        """
-        
-        # Std Dev explanation
-        std_detail = f"""
-        <p><strong>Desvio Padrão (σ):</strong> Mede quanto os valores variam em relação à média.</p>
-        <div class="formula">
-        σ = √(Σ(xi - média)² / (N-1))
-        </div>
-        <p><strong>Passo 1:</strong> Calcular (valor - média)² para cada um:</p>
-        """
-        
-        for i, v in enumerate(values[:5]):
-            diff = v - stats['mean']
-            std_detail += f"<div class='formula'>({{:.2f}} - {{:.2f}})² = {{:.4f}}</div>".format(v, stats['mean'], diff**2)
-        
-        if n > 5:
-            std_detail += f"<p>... e mais {n-5} valores</p>"
-        
-        std_detail += f"""
-        <p><strong>Passo 2:</strong> Somar todos os quadrados: {np.sum((values - stats['mean'])**2):.4f}</p>
-        <p><strong>Passo 3:</strong> Dividir por (N-1) = {n-1}: {np.sum((values - stats['mean'])**2) / (n-1):.4f}</p>
-        <p><strong>Passo 4:</strong> Tirar raiz quadrada: {stats['std']:.4f} cm = <strong>{stats['std']*10:.2f} mm</strong></p>
-        <p style="color: #667eea; font-weight: bold;">Interpretação: Cerca de 68% dos valores estão entre {{:.2f}}±{{:.2f}} = {{:.2f}} a {{:.2f}} cm</p>
-        """.format(stats['mean'] - stats['std'], stats['std'], 
-                  stats['mean'] - stats['std'], stats['mean'] + stats['std'])
-        
-        # Median explanation
-        median_detail = f"""
-        <p><strong>Mediana:</strong> O valor do meio quando todos estão ordenados.</p>
-        <p>Valores ordenados: {', '.join([f'{v:.2f}' for v in sorted_values])}</p>
-        <div class="formula">
-        Mediana = {stats['median']:.2f} cm
-        </div>
-        <p>50% dos valores estão abaixo da mediana, 50% acima. É resistente a valores extremos.</p>
-        """
-        
-        # Range explanation
-        range_val = stats['max'] - stats['min']
-        range_detail = f"""
-        <p><strong>Amplitude (Range):</strong> A diferença entre o máximo e o mínimo.</p>
-        <div class="formula">
-        Range = máximo - mínimo = {stats['max']:.2f} - {stats['min']:.2f} = {range_val:.2f} cm
-        </div>
-        <p>Mostra a "largura" dos seus dados brutos. Quanto menor, mais estável a medição.</p>
-        """
-        
-        return {
-            'min': min_detail,
-            'max': max_detail,
-            'mean': mean_detail,
-            'std': std_detail,
-            'median': median_detail,
-            'range': range_detail
-        }
     
     def _calculate_stats(self, values):
-        """Calculate statistics with detailed breakdown"""
+        if not values:
+            return {'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0, 'median': 0.0, 'range': 0.0, 'count': 0}
+            
         arr = np.array(values)
-        mean_val = np.mean(arr)
-        
-        # Desvio padrão usando N-1 (amostra, não população)
-        std_val = np.std(arr, ddof=1) if len(arr) > 1 else 0
+        val_min = np.min(arr)
+        val_max = np.max(arr)
         
         return {
-            'min': np.min(arr),
-            'max': np.max(arr),
-            'mean': mean_val,
-            'std': std_val,
+            'min': val_min,
+            'max': val_max,
+            'mean': np.mean(arr),
+            'std': np.std(arr, ddof=1) if len(arr) > 1 else 0,
             'median': np.median(arr),
-            'count': len(values),
-            'values': arr  # Guardar valores para mostrar cálculo
+            'range': val_max - val_min,
+            'count': len(values)
         }
     
     def monitor(self):
-        """Main monitoring loop"""
         if not self.open_port():
             return False
         
         self.print_header()
         self.start_time = time.time()
         
-        # Setup keyboard listener
         listener = keyboard.Listener(on_press=self.on_key_press)
         listener.start()
         
-        # Setup capture thread
         capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
         capture_thread.start()
-        
-        print("🔍 DEBUG: Waiting for data from serial port...")
-        debug_count = 0
         
         try:
             while not self.exit_flag:
                 if self.ser.in_waiting > 0:
                     try:
                         line = self.ser.readline().decode('utf-8', errors='ignore').rstrip()
-                        
-                        # Accumulate lines in buffer
                         self.line_buffer += " " + line
                         
-                        # Check if we have a complete measurement (ends with }])
                         if ']}' in self.line_buffer:
-                            debug_count += 1
-                            
-                            # DEBUG: Show parsed section
-                            if debug_count <= 5:
-                                print(f"[DEBUG] Section {debug_count}: {self.line_buffer[:100]}...")
-                            
-                            # Parse the complete section
                             timestamp = datetime.now()
+                            
+                            # CORREÇÃO: Cálculo seguro do Delta T
+                            delta_t = 0
+                            if self.last_timestamp:
+                                delta_t = int((timestamp - self.last_timestamp).total_seconds() * 1000)
+                            self.last_timestamp = timestamp
+                            
                             distance = self._extract_distance(self.line_buffer)
                             kalman = self._extract_kalman(self.line_buffer)
+                            media_mov = self._extract_media_movel(self.line_buffer)
                             rssi = self._extract_rssi(self.line_buffer)
                             per = self._extract_per(self.line_buffer)
-                            media = self._extract_media(self.line_buffer)
                             block_index = self._extract_block_index(self.line_buffer)
                             
                             if distance is not None:
                                 self.line_count += 1
                                 measurement = {
                                     'timestamp': timestamp,
+                                    'delta_t': delta_t, # Armazenado de forma silenciosa para o HTML
                                     'distance': distance,
                                     'kalman': kalman,
+                                    'media_movel': media_mov,
                                     'rssi': rssi,
                                     'per': per,
-                                    'media': media,
                                     'block_index': block_index,
                                     'raw': self.line_buffer
                                 }
                                 self.all_measurements.append(measurement)
                                 
-                                # Display on screen with block number
+                                # TERMINAL ORIGINAL: Exibição limpa como você prefere
                                 ts = timestamp.strftime("%H:%M:%S.%f")[:-3]
-                                block_str = f"Block #{block_index}" if block_index is not None else "Block: N/A"
-                                rssi_str = f"RSSI: {rssi:6.1f} dBm" if rssi else "RSSI: N/A"
+                                block_str = f"Blk #{block_index:<5}" if block_index is not None else "Blk #----"
+                                rssi_bar = self._get_rssi_bars(rssi)
+                                rssi_str = f"RSSI: {rssi:6.1f} dBm {rssi_bar}" if rssi else "RSSI: N/A"
                                 per_str = f"PER: {per:5.1f}%" if per is not None else ""
                                 kalman_str = f"| Kalm: {kalman:6.2f}cm" if kalman is not None else ""
+                                mov_str = f"| Mov: {media_mov:6.2f}cm" if media_mov is not None else ""
                                 
-                                print(f"[{ts}] {block_str:10s} | Dist: {distance:6.2f}cm {kalman_str} | {rssi_str} | {per_str}")
-                            elif debug_count <= 5:
-                                print(f"[DEBUG] Could not parse distance from: {self.line_buffer[:80]}...")
+                                print(f"[{ts}] {block_str} | Dist: {distance:6.2f}cm {kalman_str} {mov_str} | {rssi_str} | {per_str}")
                             
-                            # Clear buffer for next measurement
                             self.line_buffer = ""
-                    
                     except Exception as e:
-                        if debug_count <= 5:
-                            print(f"[DEBUG] Exception: {str(e)}")
-                
+                        pass
                 time.sleep(0.01)
-        
         except KeyboardInterrupt:
             self.exit_flag = True
-        
         finally:
             listener.stop()
             if self.ser:
                 self.ser.close()
             print("\n✓ Port closed")
-        
         return True
     
     def _capture_loop(self):
-        """Background thread for capturing windows"""
         while not self.exit_flag:
             if self.capture_active:
                 self.capture_window()
             time.sleep(0.1)
     
     def generate_html_report(self):
-        """Generate HTML report with all captures"""
         if not self.captures:
             print("⚠️  No captures recorded")
             return False
@@ -436,80 +301,93 @@ class LiveMonitor:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UWB Measurement Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; }}
-        .container {{ max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); overflow: hidden; }}
-        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; text-align: center; }}
-        .header h1 {{ font-size: 2.5em; margin-bottom: 10px; }}
-        .content {{ padding: 40px; }}
-        .capture {{ margin-bottom: 30px; padding: 20px; background: #f8f9fa; border-left: 4px solid #667eea; border-radius: 6px; }}
-        .capture h3 {{ color: #667eea; margin-bottom: 15px; font-size: 1.3em; }}
-        .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 15px; }}
-        .stat-item {{ background: white; padding: 15px; border-radius: 4px; text-align: center; border: 1px solid #ddd; cursor: pointer; transition: all 0.3s ease; }}
-        .stat-item:hover {{ transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); border-color: #667eea; }}
-        .stat-item.kalman-highlight {{ border-color: #764ba2; background: #fdfcff; }}
-        .stat-item.kalman-highlight:hover {{ box-shadow: 0 4px 12px rgba(118, 75, 162, 0.3); }}
-        .stat-label {{ font-size: 0.9em; color: #666; text-transform: uppercase; margin-bottom: 5px; }}
-        .stat-value {{ font-size: 1.4em; font-weight: bold; color: #667eea; }}
-        .stat-item.kalman-highlight .stat-value {{ color: #764ba2; }}
-        .measurements {{ margin-top: 15px; max-height: 300px; overflow-y: auto; background: white; border: 1px solid #ddd; border-radius: 4px; padding: 10px; }}
-        .measurement-row {{ padding: 5px; border-bottom: 1px solid #eee; font-family: monospace; font-size: 0.85em; }}
-        .footer {{ background: #f8f9fa; padding: 20px; text-align: center; color: #666; border-top: 1px solid #ddd; }}
-        .modal {{ display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); }}
+        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background: #e9ecef; padding: 20px; }}
+        .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); overflow: hidden; }}
+        .header {{ background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%); color: white; padding: 30px; text-align: center; }}
+        .header h1 {{ font-size: 2.2em; margin-bottom: 5px; }}
+        .content {{ padding: 30px; }}
+        
+        .capture {{ margin-bottom: 40px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; overflow: hidden; }}
+        .capture-header {{ background: #fff; padding: 15px 20px; border-bottom: 2px solid #4b6cb7; display: flex; justify-content: space-between; align-items: center; }}
+        .capture-title {{ font-size: 1.2em; color: #4b6cb7; font-weight: bold; }}
+        .capture-health {{ font-size: 0.9em; background: #e9ecef; padding: 5px 15px; border-radius: 20px; color: #495057; font-weight: 600; display: flex; gap: 15px; }}
+        
+        .capture-body {{ display: flex; flex-direction: row; padding: 20px; gap: 25px; }}
+        
+        .stats-panel {{ flex: 0 0 340px; display: flex; flex-direction: column; gap: 20px; }}
+        .stat-group {{ background: #fff; border-radius: 6px; border: 1px solid #e9ecef; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }}
+        .stat-group-header {{ background: #f1f3f5; padding: 8px 15px; font-size: 0.85em; color: #495057; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center; }}
+        .info-icon {{ cursor: pointer; color: #4b6cb7; font-weight: bold; background: #e2e6ea; border-radius: 50%; width: 20px; height: 20px; display: inline-flex; justify-content: center; align-items: center; font-size: 0.85em; }}
+        .info-icon:hover {{ background: #4b6cb7; color: white; }}
+        
+        .stat-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: #e9ecef; }}
+        
+        .stat-item {{ background: #fff; padding: 12px; text-align: center; }}
+        .stat-item:hover {{ background: #f8f9fa; }}
+        .stat-item.highlight {{ background: #fdfcff; }}
+        .stat-label {{ font-size: 0.70em; color: #868e96; text-transform: uppercase; margin-bottom: 2px; font-weight: 600; }}
+        .stat-value {{ font-size: 1.1em; font-weight: bold; color: #343a40; }}
+        .highlight .stat-value {{ color: #764ba2; }}
+        
+        .log-panel {{ flex: 1; display: flex; flex-direction: column; gap: 15px; }}
+        .chart-container {{ background: white; border: 1px solid #e9ecef; border-radius: 6px; padding: 15px; height: 250px; position: relative; }}
+        .measurements {{ flex: 1; min-height: 250px; max-height: 350px; overflow-y: auto; background: #212529; color: #a1ef8c; border-radius: 6px; padding: 15px; font-family: 'Consolas', monospace; font-size: 0.85em; line-height: 1.5; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5); }}
+        .measurement-row {{ border-bottom: 1px solid rgba(255,255,255,0.05); padding: 3px 0; display: flex; gap: 10px; }}
+        .measurement-row:hover {{ background: rgba(255,255,255,0.05); }}
+        .blk-col {{ color: #ffc107; min-width: 90px; }}
+        .dt-col {{ color: #17a2b8; min-width: 60px; }}
+        
+        .footer {{ background: #fff; padding: 20px; text-align: center; color: #6c757d; border-top: 1px solid #dee2e6; font-size: 0.9em; }}
+        
+        .modal {{ display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); }}
         .modal.show {{ display: flex; align-items: center; justify-content: center; }}
-        .modal-content {{ background-color: white; padding: 30px; border-radius: 8px; max-width: 600px; max-height: 80vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }}
-        .modal-header {{ font-size: 1.5em; font-weight: bold; color: #667eea; margin-bottom: 15px; border-bottom: 2px solid #667eea; padding-bottom: 10px; }}
-        .modal-body {{ font-size: 0.95em; line-height: 1.8; }}
-        .formula {{ background: #f8f9fa; padding: 15px; border-left: 4px solid #667eea; margin: 15px 0; font-family: monospace; font-size: 0.9em; }}
-        .close-btn {{ float: right; font-size: 1.5em; font-weight: bold; cursor: pointer; color: #667eea; }}
-        .close-btn:hover {{ color: #764ba2; }}
+        .modal-content {{ background-color: white; padding: 30px; border-radius: 8px; max-width: 500px; max-height: 80vh; overflow-y: auto; box-shadow: 0 15px 50px rgba(0,0,0,0.3); }}
+        .modal-header {{ font-size: 1.3em; font-weight: bold; color: #4b6cb7; margin-bottom: 15px; border-bottom: 2px solid #4b6cb7; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }}
+        .modal-body {{ font-size: 0.95em; line-height: 1.7; color: #495057; }}
+        .close-btn {{ font-size: 1.2em; font-weight: bold; cursor: pointer; color: #adb5bd; border: none; background: none; }}
+        .close-btn:hover {{ color: #dc3545; }}
     </style>
     <script>
         let currentModal = null;
-        
         function showModal(title, contentId) {{
             const modal = document.getElementById('infoModal');
             const sourceContent = document.getElementById(contentId);
-            
-            if (!modal || !sourceContent) {{
-                console.error("Erro: Elemento do modal ou conteúdo não encontrado!");
-                return;
-            }}
-            
-            document.getElementById('modalTitle').innerText = title;
+            if (!modal || !sourceContent) {{ return; }}
+            document.getElementById('modalTitleText').innerText = title;
             document.getElementById('modalBody').innerHTML = sourceContent.innerHTML;
             modal.classList.add('show');
             currentModal = modal;
         }}
-        
         function closeModal() {{
-            if (currentModal) {{
-                currentModal.classList.remove('show');
-            }}
+            if (currentModal) {{ currentModal.classList.remove('show'); }}
         }}
-        
         window.onclick = function(event) {{
             const modal = document.getElementById('infoModal');
-            if (event.target === modal) {{
-                closeModal();
-            }}
+            if (event.target === modal) {{ closeModal(); }}
         }}
+        document.addEventListener('keydown', function(event) {{
+            if (event.key === "Escape") {{ closeModal(); }}
+        }});
     </script>
 </head>
 <body>
     <div id="infoModal" class="modal">
         <div class="modal-content">
-            <span class="close-btn" onclick="closeModal()">&times;</span>
-            <div class="modal-header" id="modalTitle">Detalhes do Cálculo</div>
+            <div class="modal-header">
+                <span id="modalTitleText">Detalhes</span>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
             <div class="modal-body" id="modalBody"></div>
         </div>
     </div>
     
     <div class="container">
         <div class="header">
-            <h1>📊 UWB Measurement Report</h1>
-            <p>DWM3001CDK Live Monitor Analysis</p>
+            <h1>📡 Relatório de Medição UWB</h1>
+            <p>DWM3001CDK Análise Comparativa de Filtros & Qualidade de Sinal</p>
         </div>
         
         <div class="content">
@@ -517,86 +395,174 @@ class LiveMonitor:
         
         for idx, capture in enumerate(self.captures, 1):
             measurements = capture['measurements']
+            
             distances = [m['distance'] for m in measurements if m['distance'] is not None]
             kalmans = [m['kalman'] for m in measurements if m.get('kalman') is not None]
-            pers = [m['per'] for m in measurements if m['per'] is not None]
+            mov_avgs = [m['media_movel'] for m in measurements if m.get('media_movel') is not None]
+            rssis = [m['rssi'] for m in measurements if m.get('rssi') is not None]
+            pers = [m['per'] for m in measurements if m.get('per') is not None]
+            dts = [m['delta_t'] for m in measurements if m.get('delta_t') is not None]
             
             if distances:
-                stats = self._calculate_stats(distances)
-                per_mean = np.mean(pers) if pers else 0
-                per_max = np.max(pers) if pers else 0
-                kalman_mean = np.mean(kalmans) if kalmans else 0
+                st_raw = self._calculate_stats(distances)
+                st_kal = self._calculate_stats(kalmans)
+                st_mov = self._calculate_stats(mov_avgs)
                 
-                details = self._create_calculation_details(stats)
-                kalman_detail = self._create_kalman_details(kalman_mean)
+                avg_rssi = np.mean(rssis) if rssis else 0
+                avg_per = np.mean(pers) if pers else 0
+                avg_dt = np.mean(dts) if dts else 0
+                
+                labels_js = [m.get('block_index', i) for i, m in enumerate(measurements)]
+                raw_js = [m['distance'] if m['distance'] is not None else 'null' for m in measurements]
+                kal_js = [m['kalman'] if m.get('kalman') is not None else 'null' for m in measurements]
+                mov_js = [m['media_movel'] if m.get('media_movel') is not None else 'null' for m in measurements]
                 
                 html += f"""
             <div class="capture">
-                <h3>📈 Capture Window #{idx}</h3>
-                
-                <div id="modal-min-{idx}" style="display: none;">{details['min']}</div>
-                <div id="modal-max-{idx}" style="display: none;">{details['max']}</div>
-                <div id="modal-mean-{idx}" style="display: none;">{details['mean']}</div>
-                <div id="modal-std-{idx}" style="display: none;">{details['std']}</div>
-                <div id="modal-median-{idx}" style="display: none;">{details['median']}</div>
-                <div id="modal-range-{idx}" style="display: none;">{details['range']}</div>
-                <div id="modal-kalman-{idx}" style="display: none;">{kalman_detail}</div>
-
-                <div class="stats-grid">
-                    <div class="stat-item kalman-highlight" onclick="showModal('Estatísticas do Filtro de Kalman', 'modal-kalman-{idx}')">
-                        <div class="stat-label">Kalman (Média)</div>
-                        <div class="stat-value">{kalman_mean:.2f} cm</div>
-                    </div>
-                    <div class="stat-item" onclick="showModal('Média Bruta', 'modal-mean-{idx}')">
-                        <div class="stat-label">Raw Mean</div>
-                        <div class="stat-value">{stats['mean']:.2f} cm</div>
-                    </div>
-                    <div class="stat-item" onclick="showModal('Desvio Padrão', 'modal-std-{idx}')">
-                        <div class="stat-label">Std Dev</div>
-                        <div class="stat-value">{stats['std']:.2f} cm</div>
-                    </div>
-                    <div class="stat-item" onclick="showModal('Mínimo', 'modal-min-{idx}')">
-                        <div class="stat-label">Minimum</div>
-                        <div class="stat-value">{stats['min']:.2f} cm</div>
-                    </div>
-                    <div class="stat-item" onclick="showModal('Máximo', 'modal-max-{idx}')">
-                        <div class="stat-label">Maximum</div>
-                        <div class="stat-value">{stats['max']:.2f} cm</div>
-                    </div>
-                    <div class="stat-item" onclick="showModal('Amplitude', 'modal-range-{idx}')">
-                        <div class="stat-label">Range</div>
-                        <div class="stat-value">{(stats['max']-stats['min']):.2f} cm</div>
-                    </div>
-                    <div class="stat-item" onclick="showModal('Mediana', 'modal-median-{idx}')">
-                        <div class="stat-label">Median</div>
-                        <div class="stat-value">{stats['median']:.2f} cm</div>
+                <div class="capture-header">
+                    <div class="capture-title">📈 Janela de Captura #{idx}</div>
+                    <div class="capture-health">
+                        <span>Δt Médio: {avg_dt:.1f} ms</span>
+                        <span>RSSI Médio: {avg_rssi:.1f} dBm</span>
+                        <span>PER Médio: {avg_per:.1f}%</span>
                     </div>
                 </div>
                 
-                <div class="measurements">
-                    <strong>Measurements ({len(distances)} blocks):</strong>
+                <div id="modal-kalman-{idx}" style="display: none;">{self._create_kalman_details()}</div>
+                <div id="modal-movavg-{idx}" style="display: none;">{self._create_moving_avg_details()}</div>
+
+                <div class="capture-body">
+                    <div class="stats-panel">
+                        
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Filtro de Kalman (1D)
+                                <span class="info-icon" onclick="showModal('Filtro de Kalman', 'modal-kalman-{idx}')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item highlight"><div class="stat-label">Média</div><div class="stat-value">{st_kal['mean']:.2f} cm</div></div>
+                                <div class="stat-item highlight"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">{st_kal['std']:.2f} cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">{st_kal['range']:.2f} cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">{st_kal['min']:.1f} / {st_kal['max']:.1f}</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Média Móvel (30 Leituras)
+                                <span class="info-icon" onclick="showModal('Média Móvel', 'modal-movavg-{idx}')">?</span>
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">{st_mov['mean']:.2f} cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">{st_mov['std']:.2f} cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">{st_mov['range']:.2f} cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">{st_mov['min']:.1f} / {st_mov['max']:.1f}</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">Sinal Bruto (Raw Data)</div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">{st_raw['mean']:.2f} cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">{st_raw['std']:.2f} cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">{st_raw['range']:.2f} cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">{st_raw['min']:.1f} / {st_raw['max']:.1f}</div></div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                    
+                    <div class="log-panel">
+                        <div class="chart-container">
+                            <canvas id="chart-{idx}"></canvas>
+                        </div>
+                        
+                        <div class="measurements">
 """
                 
                 for m in measurements[:25]:
                     if m['distance'] is not None:
                         ts = m['timestamp'].strftime("%H:%M:%S.%f")[:-3]
-                        kalm_str = f"| Kalman: {m['kalman']:.2f}cm" if m.get('kalman') is not None else ""
-                        rssi_str = f"| RSSI: {m['rssi']:3.0f}dBm" if m['rssi'] else ""
+                        blk_val = m.get('block_index')
+                        blk_str = f"Blk #{blk_val:<5}" if blk_val is not None else "Blk #----"
+                        dt_val = m.get('delta_t', 0)
+                        dt_str = f"{dt_val}ms"
+                        kalm_str = f"| Kalm: {m['kalman']:.2f}cm" if m.get('kalman') is not None else ""
+                        mov_str  = f"| Mov: {m['media_movel']:.2f}cm" if m.get('media_movel') is not None else ""
+                        rssi_bar = self._get_rssi_bars(m['rssi'])
+                        rssi_str = f"| RSSI: {m['rssi']:3.0f}dBm {rssi_bar}" if m['rssi'] else ""
                         per_str = f"| PER: {m['per']:.1f}%" if m['per'] is not None else ""
-                        html += f'<div class="measurement-row">[{ts}] Raw: {m["distance"]:.2f}cm {kalm_str} {rssi_str} {per_str}</div>\n'
+                        
+                        html += f'<div class="measurement-row"><span>[{ts}]</span><span class="dt-col">Δt: {dt_str}</span><span class="blk-col">{blk_str}</span><span>Raw: {m["distance"]:6.2f}cm {kalm_str} {mov_str} {rssi_str} {per_str}</span></div>\n'
                 
-                html += """
+                html += f"""
+                        </div>
+                    </div>
                 </div>
             </div>
+            
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {{
+                    const ctx = document.getElementById('chart-{idx}').getContext('2d');
+                    new Chart(ctx, {{
+                        type: 'line',
+                        data: {{
+                            labels: {json.dumps(labels_js)},
+                            datasets: [
+                                {{
+                                    label: 'Raw Data',
+                                    data: {json.dumps(raw_js)},
+                                    borderColor: '#adb5bd',
+                                    borderDash: [5, 5],
+                                    borderWidth: 1.5,
+                                    pointRadius: 2,
+                                    fill: false,
+                                    tension: 0
+                                }},
+                                {{
+                                    label: 'Kalman Filter',
+                                    data: {json.dumps(kal_js)},
+                                    borderColor: '#764ba2',
+                                    borderWidth: 2.5,
+                                    pointRadius: 3,
+                                    pointBackgroundColor: '#764ba2',
+                                    fill: false,
+                                    tension: 0.1
+                                }},
+                                {{
+                                    label: 'Média Móvel',
+                                    data: {json.dumps(mov_js)},
+                                    borderColor: '#20c997',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: false,
+                                    tension: 0.3
+                                }}
+                            ]
+                        }},
+                        options: {{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {{
+                                legend: {{ position: 'top', labels: {{ boxWidth: 12 }} }}
+                            }},
+                            scales: {{
+                                x: {{ display: true, title: {{ display: true, text: 'Block Index' }} }},
+                                y: {{ display: true, title: {{ display: true, text: 'Distance (cm)' }} }}
+                            }}
+                        }}
+                    }});
+                }});
+            </script>
 """
         
         html += f"""
         </div>
         
         <div class="footer">
-            <p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-            <p>Total Captures: {len(self.captures)} | Total Measurements: {self.line_count}</p>
-            <p>Session Duration: {(datetime.now() - self.session_start).total_seconds():.1f} seconds</p>
+            <p>Gerado em: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <p>Total de Capturas: {len(self.captures)} | Total de Medições: {self.line_count}</p>
+            <p>Duração da Sessão: {(datetime.now() - self.session_start).total_seconds():.1f} segundos</p>
         </div>
     </div>
 </body>
@@ -636,9 +602,9 @@ Examples:
     monitor = LiveMonitor(args.port, args.baudrate)
     
     if monitor.monitor():
-        print("\n" + "="*90)
+        print("\n" + "="*105)
         print("📊 Generating HTML Report...")
-        print("="*90)
+        print("="*105)
         monitor.generate_html_report()
         print("✅ Done!")
 
