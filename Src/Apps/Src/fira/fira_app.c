@@ -16,6 +16,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <math.h>
 
 #include "fira_app_config.h"
 #include "fira_default_params.h"
@@ -680,15 +681,62 @@ static char *fira_range_diagnostics_ntf_frame_status_to_string(uint8_t frame_sta
     return result;
 }
 
-/* ========================================================================= */
-/* VARIÁVEIS GLOBAIS DO FILTRO DE KALMAN 1D                                  */
-/* ========================================================================= */
-float k_est = 0.0f;       // Estimativa atual do estado (Distância filtrada)
-float k_p = 1.0f;         // Incerteza da estimativa atual
-float k_q = 0.1f;        // Q: Ruído do Processo (Agilidade da Lança. Aumente se houver atraso/lag)
-float k_r = 15.0f;        // R: Ruído da Medição (Jitter do UWB. Aumente se estiver tremendo muito)
-bool kalman_iniciado = false; // Flag para inicializar o filtro no primeiro ping
 
+/* ========================================================================= */
+/* VARIÁVEIS DA CASCATA DE FILTROS (GATING + MEDIANA + KALMAN 1D)            */
+/* ========================================================================= */
+
+// --- 1. GATING FÍSICO ---
+// 50 cm por ciclo de 200ms = 2.5 m/s (9 km/h). Ajuste se o cesto for mais rápido.
+#define MAX_JUMP_CM 50.0f 
+float last_gated_distance = 0.0f;
+bool gating_iniciado = false;
+
+// --- 2. FILTRO DE MEDIANA ---
+#define MEDIAN_WINDOW 5
+float median_buffer[MEDIAN_WINDOW];
+uint8_t median_idx = 0;
+bool median_filled = false;
+
+// Função auxiliar para injetar e extrair a mediana
+float get_median(float new_val) {
+    median_buffer[median_idx] = new_val;
+    median_idx = (median_idx + 1) % MEDIAN_WINDOW;
+
+    if (!median_filled && median_idx == 0) {
+        median_filled = true;
+    }
+
+    int count = median_filled ? MEDIAN_WINDOW : (median_idx == 0 ? 1 : median_idx);
+    float temp[MEDIAN_WINDOW];
+    for (int i = 0; i < count; i++) {
+        temp[i] = median_buffer[i];
+    }
+
+    // Bubble Sort simples (muito rápido para apenas 5 elementos)
+    for (int i = 0; i < count - 1; i++) {
+        for (int j = 0; j < count - i - 1; j++) {
+            if (temp[j] > temp[j+1]) {
+                float t = temp[j];
+                temp[j] = temp[j+1];
+                temp[j+1] = t;
+            }
+        }
+    }
+    return temp[count / 2];
+}
+
+// --- 3. FILTRO DE KALMAN 1D ---
+float k_est = 0.0f;       // Estimativa atual do estado (Distância filtrada final)
+float k_p = 1.0f;         // Incerteza da estimativa atual
+float k_q = 0.1f;         // Q: Ruído do Processo 
+float k_r = 15.0f;        // R: Ruído da Medição
+bool kalman_iniciado = false;
+
+
+/* ========================================================================= */
+/* VARIÁVEIS MÉDIA MÓVEL E PER                                               */
+/* ========================================================================= */
 #define QTD_LEITURAS_DISTANCE 30
 bool distance_media_liberada = 0;
 int16_t distance_leituras[QTD_LEITURAS_DISTANCE];
@@ -759,31 +807,49 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
         len += snprintf(&str_result->str[len], str_result->len - len, "\r\n\r [mac_address=0x%04x, status=\"%s\", PER=%.4f", rm->short_addr, fira_session_info_ntf_twr_status_to_string(rm->status), per);
 
         /* ============================================================== */
-        /* BRUTALMENTE HONESTO + FILTRO DE KALMAN 1D                      */
+        /* CASCATA DE FILTROS ATIVA: RAW -> GATING -> MEDIANA -> KALMAN   */
         /* ============================================================== */
         if (rm->status == QUWBS_FBS_STATUS_RANGING_SUCCESS)
         {
-            float medicao_atual = (float)rm->distance_cm;
+            float medicao_bruta = (float)rm->distance_cm;
             
-            // 1. INICIALIZAÇÃO: Primeiro ping válido, absorve sem filtro
-            if (!kalman_iniciado) {
-                k_est = medicao_atual;
-                kalman_iniciado = true;
-            }
-            // 2. CICLO DO FILTRO DE KALMAN 1D
-            else {
-                k_p = k_p + k_q; // Passo 1: Previsão do Erro
-                
-                float k_gain = k_p / (k_p + k_r); // Passo 2: Ganho de Kalman
-                
-                k_est = k_est + k_gain * (medicao_atual - k_est); // Passo 3: Atualização do Estado
-                
-                k_p = (1.0f - k_gain) * k_p; // Passo 4: Atualização da Incerteza
+            /* --- ESTÁGIO 1: GATING FÍSICO --- */
+            float gated_distance = medicao_bruta;
+            if (!gating_iniciado) {
+                last_gated_distance = medicao_bruta;
+                gating_iniciado = true;
+            } else {
+                float delta = medicao_bruta - last_gated_distance;
+                if (delta > MAX_JUMP_CM) {
+                    gated_distance = last_gated_distance + MAX_JUMP_CM; // Trava subida
+                } else if (delta < -MAX_JUMP_CM) {
+                    gated_distance = last_gated_distance - MAX_JUMP_CM; // Trava descida
+                } else {
+                    gated_distance = medicao_bruta; // Movimento normal
+                }
+                last_gated_distance = gated_distance;
             }
 
-            len += snprintf(&str_result->str[len], str_result->len - len, ", distance_bruta[cm]=%d", (int)medicao_atual);
-            len += snprintf(&str_result->str[len], str_result->len - len, ", kalman[cm]=%.2f", k_est);
+            /* --- ESTÁGIO 2: FILTRO DE MEDIANA --- */
+            float median_distance = get_median(gated_distance);
+
+            /* --- ESTÁGIO 3: FILTRO DE KALMAN 1D --- */
+            if (!kalman_iniciado) {
+                k_est = median_distance; // Inicializa com a mediana polida
+                kalman_iniciado = true;
+            }
+            else {
+                k_p = k_p + k_q;
+                float k_gain = k_p / (k_p + k_r);
+                k_est = k_est + k_gain * (median_distance - k_est); // Alimentado pela mediana
+                k_p = (1.0f - k_gain) * k_p;
+            }
+
+            /* Impressão dos Dados (O Python continuará capturando normalmente) */
+            len += snprintf(&str_result->str[len], str_result->len - len, ", distance_bruta[cm]=%d", (int)medicao_bruta);
+            len += snprintf(&str_result->str[len], str_result->len - len, ", kalman[cm]=%.2f", k_est); // k_est agora é o resultado da cascata
             
+            /* --- CÁLCULO DA MÉDIA MÓVEL (ANTIGO) --- */
             if (!distance_media_liberada)
             {
                 distance_leituras[distance_i_leitura] = rm->distance_cm;
@@ -804,6 +870,7 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
                 distance_media = (float)distance_soma / QTD_LEITURAS_DISTANCE;
             len += snprintf(&str_result->str[len], str_result->len - len, ", media_movel[cm]=%.2f", distance_media);
             
+            /* --- ÂNGULOS E SINAL --- */
             if (rm->local_aoa_measurements[0].aoa_fom_100 > 0)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", loc_az_pdoa=%0.2f, loc_az=%0.2f", convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].pdoa_2pi), convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].aoa_2pi));
             if (rm->local_aoa_measurements[1].aoa_fom_100 > 0)
