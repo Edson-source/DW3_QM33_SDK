@@ -186,7 +186,6 @@ class LiveMonitor:
             <li><strong>Q (Ruído do Processo):</strong> 0.10</li>
             <li><strong>R (Ruído da Medição - Jitter):</strong> 15.00</li>
         </ul>
-        <p>Oferece o melhor equilíbrio: variação contida (range muito menor que o bruto) e tempo de resposta instantâneo.</p>
         """
     
     def _calculate_stats(self, values):
