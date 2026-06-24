@@ -51,7 +51,6 @@ class LiveMonitor:
         self.session_start = datetime.now()
         self.line_count = 0
         
-        # CORREÇÃO: Inicialização do timestamp para evitar AttributeError
         self.last_timestamp = None
         self.line_buffer = ""
     
@@ -229,7 +228,6 @@ class LiveMonitor:
                         if ']}' in self.line_buffer:
                             timestamp = datetime.now()
                             
-                            # CORREÇÃO: Cálculo seguro do Delta T
                             delta_t = 0
                             if self.last_timestamp:
                                 delta_t = int((timestamp - self.last_timestamp).total_seconds() * 1000)
@@ -257,7 +255,6 @@ class LiveMonitor:
                                 }
                                 self.all_measurements.append(measurement)
                                 
-                                # TERMINAL ORIGINAL: Exibição limpa
                                 ts = timestamp.strftime("%H:%M:%S.%f")[:-3]
                                 block_str = f"Blk #{block_index:<5}" if block_index is not None else "Blk #----"
                                 rssi_bar = self._get_rssi_bars(rssi)
