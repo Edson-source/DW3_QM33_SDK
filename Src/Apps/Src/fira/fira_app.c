@@ -92,7 +92,7 @@ void fira_set_default_params(bool controller)
     session_params->preamble_duration = FIRA_PREAMBLE_DURATION_64;   // 1 = 64 símbolos (Ouvido mais apurado)
     session_params->phr_data_rate = FIRA_PHR_DATA_RATE_850K;         // 0 = 850 kbps (Mais lento = Mais alcance)
     session_params->psdu_data_rate = FIRA_PSDU_DATA_RATE_6M81;       // 0 = 6.81 Mbps (Taxa de dados mais confiável)
-    session_params->ranging_round_usage = FIRA_RANGING_ROUND_USAGE_DSTWR_NON_DEFERRED; // DS-TWR (Imunidade contra drift de clock em distâncias maiores)
+    session_params->ranging_round_usage = 2; // DS-TWR (Imunidade contra drift de clock em distâncias maiores)
     session_params->max_rr_retry = 3;                                // Hardware luta por 3x antes de derrubar o pacote
     session_params->report_rssi = 1;                                 // Ativa leitura de energia
     session_params->enable_diagnostics = false;                      // Ativa a coleta de dados de diagnóstico
