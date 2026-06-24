@@ -35,7 +35,7 @@
 static struct uwbmac_context *uwbmac_ctx = NULL;
 static struct fira_context fira_ctx;
 
-#define STR_SIZE (256)
+#define STR_SIZE (512)
 #define TEN_TO_6 1000000
 
 static uint32_t session_id = 42;
@@ -81,21 +81,22 @@ void fira_set_default_params(bool controller)
     session_params->round_duration_slots = FIRA_DEFAULT_ROUND_DURATION_SLOTS;
     session_params->multi_node_mode = FIRA_DEFAULT_MULTI_NODE_MODE;
     session_params->round_hopping = FIRA_DEFAULT_ROUND_HOPPING;
+    session_params->round_hopping = FIRA_DEFAULT_ROUND_HOPPING;
     session_params->schedule_mode = FIRA_SCHEDULE_MODE_TIME_SCHEDULED;
 
     /* ========================================================== */
     /* MÁXIMA SENSIBILIDADE E CONFIABILIDADE DE LINK              */
     /* ========================================================== */
-    session_params->channel_number = 5;                              // Canal 5 (6.5 GHz): Frequência menor = maior penetração
-    session_params->prf_mode = FIRA_PRF_MODE_BPRF;                   // 0 = BPRF (62.4 MHz)
-    session_params->preamble_code_index = 9;                         // Código padrão mais robusto do BPRF
-    session_params->preamble_duration = FIRA_PREAMBLE_DURATION_64;   // 1 = 64 símbolos (Ouvido mais apurado)
-    session_params->phr_data_rate = FIRA_PHR_DATA_RATE_850K;         // 0 = 850 kbps (Mais lento = Mais alcance)
-    session_params->psdu_data_rate = FIRA_PSDU_DATA_RATE_6M81;       // 0 = 6.81 Mbps (Taxa de dados mais confiável)
-    session_params->ranging_round_usage = 2; // DS-TWR (Imunidade contra drift de clock em distâncias maiores)
-    session_params->max_rr_retry = 3;                                // Hardware luta por 3x antes de derrubar o pacote
-    session_params->report_rssi = 1;                                 // Ativa leitura de energia
-    session_params->enable_diagnostics = false;                      // Ativa a coleta de dados de diagnóstico
+    session_params->channel_number = 5;                            // Canal 5 (6.5 GHz): Frequência menor = maior penetração
+    session_params->prf_mode = FIRA_PRF_MODE_BPRF;                 // 0 = BPRF (62.4 MHz)
+    session_params->preamble_code_index = 9;                       // Código padrão mais robusto do BPRF
+    session_params->preamble_duration = FIRA_PREAMBLE_DURATION_64; // 1 = 64 símbolos (Ouvido mais apurado)
+    session_params->phr_data_rate = FIRA_PHR_DATA_RATE_850K;       // 0 = 850 kbps (Mais lento = Mais alcance)
+    session_params->psdu_data_rate = FIRA_PSDU_DATA_RATE_6M81;     // 0 = 6.81 Mbps (Taxa de dados mais confiável)
+    session_params->ranging_round_usage = 2;                       // DS-TWR (Imunidade contra drift de clock em distâncias maiores)
+    session_params->max_rr_retry = 3;                              // Hardware luta por 3x antes de derrubar o pacote
+    session_params->report_rssi = 1;                               // Ativa leitura de energia
+    session_params->enable_diagnostics = false;                    // Ativa a coleta de dados de diagnóstico
 
     /* Bit 0 is for setting tof report. */
     session_params->result_report_config |= fira_helper_bool_to_result_report_config(true, false, false, false);
@@ -615,13 +616,20 @@ static char *fira_session_status_ntf_reason_code_to_string(enum quwbs_fbs_reason
 {
     switch (reason_code)
     {
-        case QUWBS_FBS_REASON_CODE_STATE_CHANGE_WITH_SESSION_MANAGEMENT_COMMANDS: return "State change with session management commands";
-        case QUWBS_FBS_REASON_CODE_MAX_RANGING_ROUND_RETRY_COUNT_REACHED: return "Max ranging round retry count reached";
-        case QUWBS_FBS_REASON_CODE_MAX_NUMBER_OF_MEASUREMENTS_REACHED: return "Max number of measurements reached";
-        case QUWBS_FBS_REASON_CODE_SESSION_SUSPENDED_DUE_TO_INBAND_SIGNAL: return "Session suspended due to inband signal";
-        case QUWBS_FBS_REASON_CODE_SESSION_RESUMED_DUE_TO_INBAND_SIGNAL: return "Session resumed due to inband signal";
-        case QUWBS_FBS_REASON_CODE_SESSION_STOPPED_DUE_TO_INBAND_SIGNAL: return "Session stopped due to inband signal";
-        default: return "Unknown";
+        case QUWBS_FBS_REASON_CODE_STATE_CHANGE_WITH_SESSION_MANAGEMENT_COMMANDS:
+            return "State change with session management commands";
+        case QUWBS_FBS_REASON_CODE_MAX_RANGING_ROUND_RETRY_COUNT_REACHED:
+            return "Max ranging round retry count reached";
+        case QUWBS_FBS_REASON_CODE_MAX_NUMBER_OF_MEASUREMENTS_REACHED:
+            return "Max number of measurements reached";
+        case QUWBS_FBS_REASON_CODE_SESSION_SUSPENDED_DUE_TO_INBAND_SIGNAL:
+            return "Session suspended due to inband signal";
+        case QUWBS_FBS_REASON_CODE_SESSION_RESUMED_DUE_TO_INBAND_SIGNAL:
+            return "Session resumed due to inband signal";
+        case QUWBS_FBS_REASON_CODE_SESSION_STOPPED_DUE_TO_INBAND_SIGNAL:
+            return "Session stopped due to inband signal";
+        default:
+            return "Unknown";
     }
 }
 
@@ -688,8 +696,7 @@ static char *fira_range_diagnostics_ntf_frame_status_to_string(uint8_t frame_sta
 /* ========================================================================= */
 
 // --- 1. GATING FÍSICO ---
-// 50 cm por ciclo de 200ms = 2.5 m/s (9 km/h). Ajuste se o cesto for mais rápido.
-#define MAX_JUMP_CM 50.0f 
+#define MAX_JUMP_CM 50.0f
 float last_gated_distance = 0.0f;
 bool gating_iniciado = false;
 
@@ -699,28 +706,32 @@ float median_buffer[MEDIAN_WINDOW];
 uint8_t median_idx = 0;
 bool median_filled = false;
 
-// Função auxiliar para injetar e extrair a mediana
-float get_median(float new_val) {
+float get_median(float new_val)
+{
     median_buffer[median_idx] = new_val;
     median_idx = (median_idx + 1) % MEDIAN_WINDOW;
 
-    if (!median_filled && median_idx == 0) {
+    if (!median_filled && median_idx == 0)
+    {
         median_filled = true;
     }
 
     int count = median_filled ? MEDIAN_WINDOW : (median_idx == 0 ? 1 : median_idx);
     float temp[MEDIAN_WINDOW];
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count; i++)
+    {
         temp[i] = median_buffer[i];
     }
 
-    // Bubble Sort simples (muito rápido para apenas 5 elementos)
-    for (int i = 0; i < count - 1; i++) {
-        for (int j = 0; j < count - i - 1; j++) {
-            if (temp[j] > temp[j+1]) {
+    for (int i = 0; i < count - 1; i++)
+    {
+        for (int j = 0; j < count - i - 1; j++)
+        {
+            if (temp[j] > temp[j + 1])
+            {
                 float t = temp[j];
-                temp[j] = temp[j+1];
-                temp[j+1] = t;
+                temp[j] = temp[j + 1];
+                temp[j + 1] = t;
             }
         }
     }
@@ -728,25 +739,41 @@ float get_median(float new_val) {
 }
 
 // --- 3. FILTRO DE KALMAN 2D (Posição e Velocidade) ---
-float k2_x[2] = {0.0f, 0.0f}; // Vetor de Estado: [Posição (cm), Velocidade (cm/s)]
-float k2_p[2][2] = {{1.0f, 0.0f}, {0.0f, 1.0f}}; // Matriz de Covariância da Incerteza
-float k2_q = 5.0f;  // Q: Ruído do Processo (Variância da aceleração mecânica)
-float k2_r = 15.0f; // R: Ruído da Medição (Incerteza do UWB após o filtro de Mediana)
+float k2_x[2] = {0.0f, 0.0f};
+float k2_p[2][2] = {{1.0f, 0.0f}, {0.0f, 1.0f}};
+float k2_q = 5.0f;
+float k2_r = 15.0f;
 bool kalman2_iniciado = false;
-const float DT_KALMAN = 0.2f; // Delta T em segundos (200ms = 0.2s)
+const float DT_KALMAN = 0.2f;
 
 
 /* ========================================================================= */
-/* VARIÁVEIS MÉDIA MÓVEL E PER                                               */
+/* ESTRUTURAS DE MÉDIAS MÓVEIS PARALELAS (30 LEITURAS vs 10 LEITURAS)       */
 /* ========================================================================= */
-#define QTD_LEITURAS_DISTANCE 30
-bool distance_media_liberada = 0;
-int16_t distance_leituras[QTD_LEITURAS_DISTANCE];
-int8_t distance_i_leitura = 0;
-int32_t distance_soma = 0;
-float distance_media = 0;
+
+// --- MÉDIA MÓVEL TRADICIONAL (30 Leituras = 6 segundos) ---
+#define QTD_LEITURAS_30 30
+bool media_liberada_30 = false;
+int16_t leituras_30[QTD_LEITURAS_30];
+int8_t idx_30 = 0;
+int32_t soma_30 = 0;
+float media_30 = 0.0f;
+
+// --- NOVA MÉDIA MÓVEL AGIL (10 Leituras = 2 segundos) ---
+#define QTD_LEITURAS_10 10
+bool media_liberada_10 = false;
+int16_t leituras_10[QTD_LEITURAS_10];
+int8_t idx_10 = 0;
+int32_t soma_10 = 0;
+float media_10 = 0.0f;
+
+
+/* ========================================================================= */
+/* VARIÁVEIS DE TELEMETRIA E PER                                             */
+/* ========================================================================= */
 uint32_t total_success = 0;
 float per = 0.0f;
+uint8_t count_per_100 = 0;
 
 #define QTD_LEITURA_PER 100
 uint16_t recebido_soma = 0;
@@ -757,16 +784,13 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
     int len = 0;
     struct string_measurement *str_result = (struct string_measurement *)user_data;
     const struct fira_twr_measurements *rm;
-    
+
     len += snprintf(&str_result->str[len], str_result->len, "SESSION_INFO_NTF: ");
     len += snprintf(&str_result->str[len], str_result->len - len, "{session_handle=%" PRIu32, results->info->session_handle);
     len += snprintf(&str_result->str[len], str_result->len - len, ", sequence_number=%" PRIu32, results->info->sequence_number);
     len += snprintf(&str_result->str[len], str_result->len - len, ", block_index=%" PRIu32, results->info->block_index);
     len += snprintf(&str_result->str[len], str_result->len - len, ", n_measurements=%d", results->n_measurements);
 
-    /* ============================= */
-    /* ===== PRINT MEASUREMENTS ==== */
-    /* ============================= */
     for (int i = 0; i < results->n_measurements; i++)
     {
         if (i > 0)
@@ -774,11 +798,7 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
 
         rm = &results->measurements[i];
 
-        /* ============================= */
-        /* ======== PER JANELA ========= */
-        /* ============================= */
-
-        // Atualiza os contadores de transmitidos e recebidos
+        // --- CÁLCULO DO PER JANELA ---
         if (rm->status == QUWBS_FBS_STATUS_RANGING_SUCCESS)
         {
             recebido_soma++;
@@ -787,9 +807,9 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
         else
         {
             transmitido_soma++;
+            count_per_100++;
         }
-        
-        // Atualiza o PER
+
         if (transmitido_soma > 0)
         {
             per = (1 - ((float)recebido_soma / (float)transmitido_soma)) * 100.0f;
@@ -798,36 +818,41 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
         {
             per = 0.0f;
         }
-        
-        // Zera contadores na virada da janela
+
         if (transmitido_soma >= QTD_LEITURA_PER)
         {
             recebido_soma = 0;
             transmitido_soma = 0;
+            count_per_100 = 0;
         }
-        
-        len += snprintf(&str_result->str[len], str_result->len - len, "\r\n\r [mac_address=0x%04x, status=\"%s\", PER=%.4f", rm->short_addr, fira_session_info_ntf_twr_status_to_string(rm->status), per);
 
-        /* ============================================================== */
-        /* CASCATA DE FILTROS ATIVA: RAW -> GATING -> MEDIANA -> KALMAN 2D*/
-        /* ============================================================== */
+        len += snprintf(&str_result->str[len], str_result->len - len, "\r\n\r [mac_address=0x%04x, status=\"%s\", PER=%.4f, Count_PER=\"%d\"]", rm->short_addr, fira_session_info_ntf_twr_status_to_string(rm->status), per, count_per_100);
+
         if (rm->status == QUWBS_FBS_STATUS_RANGING_SUCCESS)
         {
             float medicao_bruta = (float)rm->distance_cm;
-            
+
             /* --- ESTÁGIO 1: GATING FÍSICO --- */
             float gated_distance = medicao_bruta;
-            if (!gating_iniciado) {
+            if (!gating_iniciado)
+            {
                 last_gated_distance = medicao_bruta;
                 gating_iniciado = true;
-            } else {
+            }
+            else
+            {
                 float delta = medicao_bruta - last_gated_distance;
-                if (delta > MAX_JUMP_CM) {
-                    gated_distance = last_gated_distance + MAX_JUMP_CM; // Trava subida
-                } else if (delta < -MAX_JUMP_CM) {
-                    gated_distance = last_gated_distance - MAX_JUMP_CM; // Trava descida
-                } else {
-                    gated_distance = medicao_bruta; // Movimento normal
+                if (delta > MAX_JUMP_CM)
+                {
+                    gated_distance = last_gated_distance + MAX_JUMP_CM;
+                }
+                else if (delta < -MAX_JUMP_CM)
+                {
+                    gated_distance = last_gated_distance - MAX_JUMP_CM;
+                }
+                else
+                {
+                    gated_distance = medicao_bruta;
                 }
                 last_gated_distance = gated_distance;
             }
@@ -835,18 +860,18 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
             /* --- ESTÁGIO 2: FILTRO DE MEDIANA --- */
             float median_distance = get_median(gated_distance);
 
-            /* --- ESTÁGIO 3: FILTRO DE KALMAN 2D (Cinemático) --- */
-            if (!kalman2_iniciado) {
-                k2_x[0] = median_distance; // Posição inicial travada
-                k2_x[1] = 0.0f;            // Começa parado
+            /* --- ESTÁGIO 3: FILTRO DE KALMAN 2D --- */
+            if (!kalman2_iniciado)
+            {
+                k2_x[0] = median_distance;
+                k2_x[1] = 0.0f;
                 kalman2_iniciado = true;
             }
-            else {
-                // 1. FASE DE PREDIÇÃO (Física da Máquina)
+            else
+            {
                 float x_pred_pos = k2_x[0] + (k2_x[1] * DT_KALMAN);
                 float x_pred_vel = k2_x[1];
 
-                // Matriz de Ruído do Processo (Aceleração Constante)
                 float dt2 = DT_KALMAN * DT_KALMAN;
                 float dt3 = dt2 * DT_KALMAN;
                 float dt4 = dt3 * DT_KALMAN;
@@ -855,56 +880,76 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
                 float q10 = q01;
                 float q11 = dt2 * k2_q;
 
-                // Predição da Matriz de Covariância (P_pred = F * P * F^T + Q)
-                float p_pred_00 = k2_p[0][0] + DT_KALMAN*k2_p[1][0] + DT_KALMAN*(k2_p[0][1] + DT_KALMAN*k2_p[1][1]) + q00;
-                float p_pred_01 = k2_p[0][1] + DT_KALMAN*k2_p[1][1] + q01;
-                float p_pred_10 = k2_p[1][0] + DT_KALMAN*k2_p[1][1] + q10;
+                float p_pred_00 = k2_p[0][0] + DT_KALMAN * k2_p[1][0] + DT_KALMAN * (k2_p[0][1] + DT_KALMAN * k2_p[1][1]) + q00;
+                float p_pred_01 = k2_p[0][1] + DT_KALMAN * k2_p[1][1] + q01;
+                float p_pred_10 = k2_p[1][0] + DT_KALMAN * k2_p[1][1] + q10;
                 float p_pred_11 = k2_p[1][1] + q11;
 
-                // 2. FASE DE ATUALIZAÇÃO (Medição do UWB)
-                float y = median_distance - x_pred_pos; // Inovação (Erro entre previsto e medido)
+                float y = median_distance - x_pred_pos;
                 float S = p_pred_00 + k2_r;
 
-                // Ganho de Kalman (K)
                 float K0 = p_pred_00 / S;
                 float K1 = p_pred_10 / S;
 
-                // Atualiza o Estado (Corrigindo predição com os dados do sensor)
                 k2_x[0] = x_pred_pos + (K0 * y);
                 k2_x[1] = x_pred_vel + (K1 * y);
 
-                // Atualiza a Covariância (P = (I - K*H) * P_pred)
                 k2_p[0][0] = (1.0f - K0) * p_pred_00;
                 k2_p[0][1] = (1.0f - K0) * p_pred_01;
                 k2_p[1][0] = -K1 * p_pred_00 + p_pred_10;
                 k2_p[1][1] = -K1 * p_pred_01 + p_pred_11;
             }
 
-            /* Impressão dos Dados (O Python continuará capturando normalmente) */
-            len += snprintf(&str_result->str[len], str_result->len - len, ", distance_bruta[cm]=%d", (int)medicao_bruta);
-            len += snprintf(&str_result->str[len], str_result->len - len, ", kalman[cm]=%.2f", k2_x[0]); 
-            
-            /* --- CÁLCULO DA MÉDIA MÓVEL (ANTIGO) --- */
-            if (!distance_media_liberada)
+            /* --- PROCESSAMENTO DA MÉDIA MÓVEL 30 (6s) --- */
+            if (!media_liberada_30)
             {
-                distance_leituras[distance_i_leitura] = rm->distance_cm;
-                distance_soma += distance_leituras[distance_i_leitura];
+                leituras_30[idx_30] = rm->distance_cm;
+                soma_30 += leituras_30[idx_30];
             }
             else
             {
-                distance_soma -= distance_leituras[distance_i_leitura];
-                distance_leituras[distance_i_leitura] = rm->distance_cm;
-                distance_soma += distance_leituras[distance_i_leitura];
+                soma_30 -= leituras_30[idx_30];
+                leituras_30[idx_30] = rm->distance_cm;
+                soma_30 += leituras_30[idx_30];
             }
-            if (++distance_i_leitura >= QTD_LEITURAS_DISTANCE)
+            if (++idx_30 >= QTD_LEITURAS_30)
             {
-                distance_i_leitura = 0;
-                distance_media_liberada = 1;
+                idx_30 = 0;
+                media_liberada_30 = true;
             }
-            if (distance_media_liberada)
-                distance_media = (float)distance_soma / QTD_LEITURAS_DISTANCE;
-            len += snprintf(&str_result->str[len], str_result->len - len, ", media_movel[cm]=%.2f", distance_media);
-            
+            if (media_liberada_30)
+            {
+                media_30 = (float)soma_30 / QTD_LEITURAS_30;
+            }
+
+            /* --- PROCESSAMENTO DA MÉDIA MÓVEL 10 (2s) --- */
+            if (!media_liberada_10)
+            {
+                leituras_10[idx_10] = rm->distance_cm;
+                soma_10 += leituras_10[idx_10];
+            }
+            else
+            {
+                soma_10 -= leituras_10[idx_10];
+                leituras_10[idx_10] = rm->distance_cm;
+                soma_10 += leituras_10[idx_10];
+            }
+            if (++idx_10 >= QTD_LEITURAS_10)
+            {
+                idx_10 = 0;
+                media_liberada_10 = true;
+            }
+            if (media_liberada_10)
+            {
+                media_10 = (float)soma_10 / QTD_LEITURAS_10;
+            }
+
+            /* Impressão dos dados na serial */
+            len += snprintf(&str_result->str[len], str_result->len - len, ", distance_bruta[cm]=%d", (int)medicao_bruta);
+            len += snprintf(&str_result->str[len], str_result->len - len, ", kalman[cm]=%.2f", k2_x[0]);
+            len += snprintf(&str_result->str[len], str_result->len - len, ", media_movel[cm]=%.2f", media_30);    // 30 amostras
+            len += snprintf(&str_result->str[len], str_result->len - len, ", media_movel_2s[cm]=%.2f", media_10); // 10 amostras
+
             /* --- ÂNGULOS E SINAL --- */
             if (rm->local_aoa_measurements[0].aoa_fom_100 > 0)
                 len += snprintf(&str_result->str[len], str_result->len - len, ", loc_az_pdoa=%0.2f, loc_az=%0.2f", convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].pdoa_2pi), convert_aoa_2pi_q16_to_deg(rm->local_aoa_measurements[0].aoa_2pi));
@@ -956,7 +1001,6 @@ static void fira_range_diagnostics_ntf_cb(const struct fira_ranging_info *info, 
 
         if (current_report->cfo_present)
         {
-            /* Convert Q26 to hundredths of ppm: cfo_ppm = cfo_q26 * 100 * 2^10 / 2^26 */
             int32_t cfo_100ppm = (int32_t)((((int64_t)current_report->cfo_q26) * 100 * TEN_TO_6) >> 26);
             len += snprintf(&str_result->str[len], str_result->len - len, ", cfo_ppm=%" PRIi32 ".%u", cfo_100ppm / 100, abs(cfo_100ppm) % 100);
         }
@@ -1005,7 +1049,6 @@ static void fira_session_status_ntf_cb(const struct fira_session_status_ntf_cont
     reporter_instance.print(str_result->str, len);
 }
 
-/** @brief is a service function which starts the FiRa TWR top-level  application. */
 static void fira_app(bool controller, void *arg)
 {
     error_e err;
@@ -1018,11 +1061,6 @@ static void fira_app(bool controller, void *arg)
     fira_app_process_start();
 }
 
-/**
- * @brief Kills all task and timers related to FiRa.
- * DW3000's RX and IRQ shall be switched off before task termination,
- * that IRQ will not produce unexpected Signal.
- */
 void fira_terminate(void)
 {
     fira_app_process_terminate();
@@ -1031,21 +1069,13 @@ void fira_terminate(void)
 
 void fira_helper_controller(const void *arg)
 {
-    /* Not used. */
     (void)arg;
-
     fira_app(true, (void *)get_fira_config());
 }
 
-/**
- * @brief Start FiRa Controller+Responder.
- * @param arg Pointer to fira_param_t or NULL if use global config.
- */
 void fira_helper_controlee(const void *arg)
 {
-    /* Not used. */
     (void)arg;
-
     fira_app(false, (void *)get_fira_config());
 }
 
@@ -1057,15 +1087,10 @@ const app_definition_t helpers_app_fira[] __attribute__((
     {"RESPF", mAPP, fira_helper_controlee, fira_terminate, waitForCommand, command_parser, NULL},
 };
 
-/**
- * @brief Action to be taken before saving params to NVM.
- * Ensures initialization if user didn't provide configuration before.
- */
 void fira_save_params(void)
 {
     fira_param_t *fira_params = get_fira_config();
 
-    /* Reinit when config is default (user set application without providing params). */
     if (fira_params->config_state == FIRA_APP_CONFIG_DEFAULT)
     {
         fira_set_default_params(fira_params->app_type == FIRA_APP_INITF);

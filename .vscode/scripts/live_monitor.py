@@ -51,7 +51,6 @@ class LiveMonitor:
         self.session_start = datetime.now()
         self.line_count = 0
         
-        # CORREÇÃO: Inicialização do timestamp para evitar AttributeError
         self.last_timestamp = None
         self.line_buffer = ""
     
@@ -88,6 +87,10 @@ class LiveMonitor:
     def _extract_media_movel(self, data):
         match = re.search(r'media_movel\[cm\]=([\d.-]+)', data)
         return float(match.group(1)) if match else None
+
+    def _extract_media_movel_2s(self, data):
+        match = re.search(r'media_movel_2s\[cm\]=([\d.-]+)', data)
+        return float(match.group(1)) if match else None
     
     def _extract_rssi(self, data):
         patterns = [
@@ -105,6 +108,10 @@ class LiveMonitor:
     def _extract_per(self, data):
         match = re.search(r'PER=([\d.]+)', data)
         return float(match.group(1)) if match else None
+
+    def _extract_count_per(self, data):
+        match = re.search(r'Count_PER="(\d+)"', data)
+        return int(match.group(1)) if match else None
     
     def _extract_block_index(self, data):
         match = re.search(r'block_index=(\d+)', data)
@@ -123,13 +130,13 @@ class LiveMonitor:
             return "[█   ]"
     
     def print_header(self):
-        print("\n" + "="*105)
-        print("🔴 LIVE MEASUREMENT MONITOR - DWM3001CDK")
-        print("="*105)
+        print("\n" + "="*125)
+        print("🔴 LIVE MEASUREMENT MONITOR - DWM3001CDK (DUAL MOVING AVERAGE & PER COUNT)")
+        print("="*125)
         print(f"Port: {self.port} | Baudrate: {self.baudrate} | Session: {self.session_start.strftime('%Y-%m-%d %H:%M:%S')}")
-        print("-"*105)
+        print("-"*125)
         print("Controls:  ',' = Capture Window  |  's' = Save Report  |  'q/ESC' = Exit")
-        print("="*105 + "\n")
+        print("="*125 + "\n")
     
     def on_key_press(self, key):
         try:
@@ -170,23 +177,20 @@ class LiveMonitor:
 
     def _create_moving_avg_details(self):
         return """
-        <p><strong>Média Móvel:</strong> Filtro passa-baixa básico que calcula a média aritmética das últimas <em>N</em> amostras (no seu firmware configurado para 30 leituras).</p>
-        <p><strong>Comportamento:</strong></p>
-        <ul>
-            <li>Suaviza o sinal e apresenta o <strong>menor range de variação</strong> matemático.</li>
-            <li><strong>Desvantagem (Lag):</strong> Introduz um atraso mecânico significativo. Mudanças rápidas na distância física demoram vários ciclos para refletir no valor.</li>
-        </ul>
+        <p><strong>Média Móvel:</strong> Filtro passa-baixa básico que calcula a média aritmética das últimas amostras.</p>
+        <p><strong>Comportamento (30 Leituras):</strong> Suaviza absurdamente o sinal e reduz o range, mas possui um atraso de resposta (lag) de 6 segundos em movimentos dinâmicos.</p>
+        <p><strong>Comportamento (10 Leituras):</strong> Reduz o lag para 2 segundos, mas transmite um pouco mais de solavancos quando há picos de ruído.</p>
         """
     
     def _create_kalman_details(self):
         return """
-        <p><strong>Filtro de Kalman (1D):</strong> Algoritmo de estimação preditiva. Permanente e dinâmico, ele rastreia mudanças rapidamente sem introduzir arrasto mecânico pesado.</p>
+        <p><strong>Filtro de Kalman (Cinemático):</strong> Algoritmo de estimação preditiva avançada que descobre ativamente a velocidade da máquina.</p>
         <p><strong>Parâmetros (C Firmware):</strong></p>
         <ul>
-            <li><strong>Q (Ruído do Processo):</strong> 0.10</li>
+            <li><strong>Q (Ruído do Processo):</strong> 5.00</li>
             <li><strong>R (Ruído da Medição - Jitter):</strong> 15.00</li>
         </ul>
-        <p>Oferece o melhor equilíbrio: variação contida (range muito menor que o bruto) e tempo de resposta instantâneo.</p>
+        <p>Oferece o melhor equilíbrio absoluto: variação contida em repouso e rastreio instantâneo sem <em>lag</em> durante a aceleração.</p>
         """
     
     def _calculate_stats(self, values):
@@ -230,7 +234,6 @@ class LiveMonitor:
                         if ']}' in self.line_buffer:
                             timestamp = datetime.now()
                             
-                            # CORREÇÃO: Cálculo seguro do Delta T
                             delta_t = 0
                             if self.last_timestamp:
                                 delta_t = int((timestamp - self.last_timestamp).total_seconds() * 1000)
@@ -239,8 +242,10 @@ class LiveMonitor:
                             distance = self._extract_distance(self.line_buffer)
                             kalman = self._extract_kalman(self.line_buffer)
                             media_mov = self._extract_media_movel(self.line_buffer)
+                            media_mov_2s = self._extract_media_movel_2s(self.line_buffer)
                             rssi = self._extract_rssi(self.line_buffer)
                             per = self._extract_per(self.line_buffer)
+                            count_per = self._extract_count_per(self.line_buffer)
                             block_index = self._extract_block_index(self.line_buffer)
                             
                             if distance is not None:
@@ -251,23 +256,36 @@ class LiveMonitor:
                                     'distance': distance,
                                     'kalman': kalman,
                                     'media_movel': media_mov,
+                                    'media_movel_2s': media_mov_2s,
                                     'rssi': rssi,
                                     'per': per,
+                                    'count_per': count_per,
                                     'block_index': block_index,
                                     'raw': self.line_buffer
                                 }
                                 self.all_measurements.append(measurement)
                                 
-                                # TERMINAL ORIGINAL: Exibição limpa
                                 ts = timestamp.strftime("%H:%M:%S.%f")[:-3]
                                 block_str = f"Blk #{block_index:<5}" if block_index is not None else "Blk #----"
-                                rssi_bar = self._get_rssi_bars(rssi)
-                                rssi_str = f"RSSI: {rssi:6.1f} dBm {rssi_bar}" if rssi else "RSSI: N/A"
-                                per_str = f"PER: {per:5.1f}%" if per is not None else ""
-                                kalman_str = f"| Kalm: {kalman:6.2f}cm" if kalman is not None else ""
-                                mov_str = f"| Mov: {media_mov:6.2f}cm" if media_mov is not None else ""
                                 
-                                print(f"[{ts}] {block_str} | Dist: {distance:6.2f}cm {kalman_str} {mov_str} | {rssi_str} | {per_str}")
+                                kalman_str = f"| Kalm: {kalman:6.2f}cm" if kalman is not None else ""
+                                mov30_str = f"| Mov30: {media_mov:6.2f}cm" if media_mov is not None else ""
+                                mov10_str = f"| Mov10: {media_mov_2s:6.2f}cm" if media_mov_2s is not None else ""
+                                
+                                rssi_bar = self._get_rssi_bars(rssi)
+                                rssi_str = f"| RSSI: {rssi:6.1f} dBm {rssi_bar}" if rssi else "| RSSI: N/A"
+                                
+                                # Formatação do PER com Count_PER incluído (ex: 5.0% (05/100))
+                                if per is not None:
+                                    if count_per is not None:
+                                        per_str = f"| PER: {per:4.1f}% ({count_per:02d}/100)"
+                                    else:
+                                        per_str = f"| PER: {per:4.1f}%"
+                                else:
+                                    per_str = ""
+                                
+                                # Terminal Alinhado
+                                print(f"[{ts}] {block_str} | Dist: {distance:6.2f}cm {kalman_str} {mov30_str} {mov10_str} {rssi_str} {per_str}")
                             
                             self.line_buffer = ""
                     except Exception as e:
@@ -305,7 +323,7 @@ class LiveMonitor:
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background: #e9ecef; padding: 20px; }}
-        .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); overflow: hidden; }}
+        .container {{ max-width: 1600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); overflow: hidden; }}
         .header {{ background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%); color: white; padding: 30px; text-align: center; }}
         .header h1 {{ font-size: 2.2em; margin-bottom: 5px; }}
         .content {{ padding: 30px; }}
@@ -315,7 +333,7 @@ class LiveMonitor:
         .capture-title {{ font-size: 1.2em; color: #4b6cb7; font-weight: bold; }}
         .capture-health {{ font-size: 0.9em; background: #e9ecef; padding: 5px 15px; border-radius: 20px; color: #495057; font-weight: 600; display: flex; gap: 15px; }}
         
-        .capture-body {{ display: flex; flex-direction: row; padding: 20px; gap: 25px; }}
+        .capture-body {{ display: flex; flex-direction: row; padding: 20px; gap: 25px; flex-wrap: wrap; }}
         
         .stats-panel {{ flex: 0 0 340px; display: flex; flex-direction: column; gap: 20px; }}
         .stat-group {{ background: #fff; border-radius: 6px; border: 1px solid #e9ecef; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }}
@@ -332,10 +350,9 @@ class LiveMonitor:
         .stat-value {{ font-size: 1.1em; font-weight: bold; color: #343a40; }}
         .highlight .stat-value {{ color: #764ba2; }}
         
-        .log-panel {{ flex: 1; display: flex; flex-direction: column; gap: 15px; overflow: hidden; }}
-        .chart-container {{ background: white; border: 1px solid #e9ecef; border-radius: 6px; padding: 15px; height: 250px; position: relative; }}
+        .log-panel {{ flex: 1; min-width: 600px; display: flex; flex-direction: column; gap: 15px; overflow: hidden; }}
+        .chart-container {{ background: white; border: 1px solid #e9ecef; border-radius: 6px; padding: 15px; height: 350px; position: relative; }}
         
-        /* CORREÇÃO AQUI: Força espaço preformatado e barra de rolagem horizontal */
         .measurements {{ flex: 1; min-height: 250px; max-height: 350px; overflow-y: auto; overflow-x: auto; background: #212529; color: #a1ef8c; border-radius: 6px; padding: 15px; font-family: 'Consolas', monospace; font-size: 0.85em; line-height: 1.5; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5); }}
         .measurement-row {{ border-bottom: 1px solid rgba(255,255,255,0.05); padding: 3px 0; white-space: pre; }}
         .measurement-row:hover {{ background: rgba(255,255,255,0.05); }}
@@ -401,6 +418,7 @@ class LiveMonitor:
             distances = [m['distance'] for m in measurements if m['distance'] is not None]
             kalmans = [m['kalman'] for m in measurements if m.get('kalman') is not None]
             mov_avgs = [m['media_movel'] for m in measurements if m.get('media_movel') is not None]
+            mov_avgs_2s = [m['media_movel_2s'] for m in measurements if m.get('media_movel_2s') is not None]
             rssis = [m['rssi'] for m in measurements if m.get('rssi') is not None]
             pers = [m['per'] for m in measurements if m.get('per') is not None]
             dts = [m['delta_t'] for m in measurements if m.get('delta_t') is not None]
@@ -409,6 +427,7 @@ class LiveMonitor:
                 st_raw = self._calculate_stats(distances)
                 st_kal = self._calculate_stats(kalmans)
                 st_mov = self._calculate_stats(mov_avgs)
+                st_mov_2s = self._calculate_stats(mov_avgs_2s)
                 
                 avg_rssi = np.mean(rssis) if rssis else 0
                 avg_per = np.mean(pers) if pers else 0
@@ -418,6 +437,7 @@ class LiveMonitor:
                 raw_js = [m['distance'] if m['distance'] is not None else 'null' for m in measurements]
                 kal_js = [m['kalman'] if m.get('kalman') is not None else 'null' for m in measurements]
                 mov_js = [m['media_movel'] if m.get('media_movel') is not None else 'null' for m in measurements]
+                mov2s_js = [m['media_movel_2s'] if m.get('media_movel_2s') is not None else 'null' for m in measurements]
                 
                 html += f"""
             <div class="capture">
@@ -438,7 +458,7 @@ class LiveMonitor:
                         
                         <div class="stat-group">
                             <div class="stat-group-header">
-                                Filtro de Kalman (1D)
+                                Filtro de Kalman (2D)
                                 <span class="info-icon" onclick="showModal('Filtro de Kalman', 'modal-kalman-{idx}')">?</span>
                             </div>
                             <div class="stat-grid">
@@ -451,7 +471,7 @@ class LiveMonitor:
 
                         <div class="stat-group">
                             <div class="stat-group-header">
-                                Média Móvel (30 Leituras)
+                                Média Móvel Lenta (30 Leituras)
                                 <span class="info-icon" onclick="showModal('Média Móvel', 'modal-movavg-{idx}')">?</span>
                             </div>
                             <div class="stat-grid">
@@ -459,6 +479,18 @@ class LiveMonitor:
                                 <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">{st_mov['std']:.2f} cm</div></div>
                                 <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">{st_mov['range']:.2f} cm</div></div>
                                 <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">{st_mov['min']:.1f} / {st_mov['max']:.1f}</div></div>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <div class="stat-group-header">
+                                Média Móvel Ágil (10 Leituras)
+                            </div>
+                            <div class="stat-grid">
+                                <div class="stat-item"><div class="stat-label">Média</div><div class="stat-value">{st_mov_2s['mean']:.2f} cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Std Dev (σ)</div><div class="stat-value">{st_mov_2s['std']:.2f} cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Range</div><div class="stat-value">{st_mov_2s['range']:.2f} cm</div></div>
+                                <div class="stat-item"><div class="stat-label">Min / Max</div><div class="stat-value">{st_mov_2s['min']:.1f} / {st_mov_2s['max']:.1f}</div></div>
                             </div>
                         </div>
 
@@ -484,25 +516,33 @@ class LiveMonitor:
                 
                 for m in measurements[:25]:
                     if m['distance'] is not None:
-                        # CORREÇÃO DA FORMATAÇÃO DA STRING
                         ts = m['timestamp'].strftime("%H:%M:%S.%f")[:-3]
                         
                         blk_val = m.get('block_index')
                         blk_str = f"Blk #{blk_val:<4}" if blk_val is not None else "Blk #---"
                         
                         dt_val = m.get('delta_t', 0)
-                        dt_str = f"{dt_val:3d}ms" # Garante o alinhamento com 3 digitos
+                        dt_str = f"{dt_val:3d}ms" 
                         
                         kalm_str = f"| Kalm: {m['kalman']:6.2f}cm" if m.get('kalman') is not None else ""
-                        mov_str  = f"| Mov: {m['media_movel']:6.2f}cm" if m.get('media_movel') is not None else ""
+                        mov_str  = f"| Mov30: {m['media_movel']:6.2f}cm" if m.get('media_movel') is not None else ""
+                        mov2s_str  = f"| Mov10: {m['media_movel_2s']:6.2f}cm" if m.get('media_movel_2s') is not None else ""
                         
                         rssi_bar = self._get_rssi_bars(m['rssi'])
                         rssi_str = f"| RSSI: {m['rssi']:3.0f}dBm {rssi_bar}" if m['rssi'] else ""
                         
-                        per_str = f"| PER: {m['per']:4.1f}%" if m['per'] is not None else ""
+                        per_val = m.get('per')
+                        count_per_val = m.get('count_per')
                         
-                        # Espaçamento literal na string para garantir visual de terminal
-                        html += f'<div class="measurement-row"><span>[{ts}]</span> <span class="dt-col">Δt: {dt_str}</span> <span class="blk-col">{blk_str}</span>   <span>Raw: {m["distance"]:6.2f}cm {kalm_str} {mov_str} {rssi_str} {per_str}</span></div>\n'
+                        if per_val is not None:
+                            if count_per_val is not None:
+                                per_str = f"| PER: {per_val:4.1f}% ({count_per_val:02d}/100)"
+                            else:
+                                per_str = f"| PER: {per_val:4.1f}%"
+                        else:
+                            per_str = ""
+                        
+                        html += f'<div class="measurement-row"><span>[{ts}]</span> <span class="dt-col">Δt: {dt_str}</span> <span class="blk-col">{blk_str}</span>   <span>Raw: {m["distance"]:6.2f}cm {kalm_str} {mov_str} {mov2s_str} {rssi_str} {per_str}</span></div>\n'
                 
                 html += f"""
                         </div>
@@ -539,9 +579,18 @@ class LiveMonitor:
                                     tension: 0.1
                                 }},
                                 {{
-                                    label: 'Média Móvel',
+                                    label: 'Média Móvel (30)',
                                     data: {json.dumps(mov_js)},
                                     borderColor: '#20c997',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: false,
+                                    tension: 0.3
+                                }},
+                                {{
+                                    label: 'Média Móvel (10)',
+                                    data: {json.dumps(mov2s_js)},
+                                    borderColor: '#fd7e14',
                                     borderWidth: 2,
                                     pointRadius: 0,
                                     fill: false,
@@ -611,9 +660,9 @@ Examples:
     monitor = LiveMonitor(args.port, args.baudrate)
     
     if monitor.monitor():
-        print("\n" + "="*105)
+        print("\n" + "="*125)
         print("📊 Generating HTML Report...")
-        print("="*105)
+        print("="*125)
         monitor.generate_html_report()
         print("✅ Done!")
 
