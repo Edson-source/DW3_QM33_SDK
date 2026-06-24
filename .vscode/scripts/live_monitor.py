@@ -247,7 +247,7 @@ class LiveMonitor:
                                 self.line_count += 1
                                 measurement = {
                                     'timestamp': timestamp,
-                                    'delta_t': delta_t, # Armazenado de forma silenciosa para o HTML
+                                    'delta_t': delta_t,
                                     'distance': distance,
                                     'kalman': kalman,
                                     'media_movel': media_mov,
@@ -258,7 +258,7 @@ class LiveMonitor:
                                 }
                                 self.all_measurements.append(measurement)
                                 
-                                # TERMINAL ORIGINAL: Exibição limpa como você prefere
+                                # TERMINAL ORIGINAL: Exibição limpa
                                 ts = timestamp.strftime("%H:%M:%S.%f")[:-3]
                                 block_str = f"Blk #{block_index:<5}" if block_index is not None else "Blk #----"
                                 rssi_bar = self._get_rssi_bars(rssi)
@@ -332,13 +332,15 @@ class LiveMonitor:
         .stat-value {{ font-size: 1.1em; font-weight: bold; color: #343a40; }}
         .highlight .stat-value {{ color: #764ba2; }}
         
-        .log-panel {{ flex: 1; display: flex; flex-direction: column; gap: 15px; }}
+        .log-panel {{ flex: 1; display: flex; flex-direction: column; gap: 15px; overflow: hidden; }}
         .chart-container {{ background: white; border: 1px solid #e9ecef; border-radius: 6px; padding: 15px; height: 250px; position: relative; }}
-        .measurements {{ flex: 1; min-height: 250px; max-height: 350px; overflow-y: auto; background: #212529; color: #a1ef8c; border-radius: 6px; padding: 15px; font-family: 'Consolas', monospace; font-size: 0.85em; line-height: 1.5; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5); }}
-        .measurement-row {{ border-bottom: 1px solid rgba(255,255,255,0.05); padding: 3px 0; display: flex; gap: 10px; }}
+        
+        /* CORREÇÃO AQUI: Força espaço preformatado e barra de rolagem horizontal */
+        .measurements {{ flex: 1; min-height: 250px; max-height: 350px; overflow-y: auto; overflow-x: auto; background: #212529; color: #a1ef8c; border-radius: 6px; padding: 15px; font-family: 'Consolas', monospace; font-size: 0.85em; line-height: 1.5; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5); }}
+        .measurement-row {{ border-bottom: 1px solid rgba(255,255,255,0.05); padding: 3px 0; white-space: pre; }}
         .measurement-row:hover {{ background: rgba(255,255,255,0.05); }}
-        .blk-col {{ color: #ffc107; min-width: 90px; }}
-        .dt-col {{ color: #17a2b8; min-width: 60px; }}
+        .blk-col {{ color: #ffc107; }}
+        .dt-col {{ color: #17a2b8; }}
         
         .footer {{ background: #fff; padding: 20px; text-align: center; color: #6c757d; border-top: 1px solid #dee2e6; font-size: 0.9em; }}
         
@@ -482,18 +484,25 @@ class LiveMonitor:
                 
                 for m in measurements[:25]:
                     if m['distance'] is not None:
+                        # CORREÇÃO DA FORMATAÇÃO DA STRING
                         ts = m['timestamp'].strftime("%H:%M:%S.%f")[:-3]
+                        
                         blk_val = m.get('block_index')
-                        blk_str = f"Blk #{blk_val:<5}" if blk_val is not None else "Blk #----"
+                        blk_str = f"Blk #{blk_val:<4}" if blk_val is not None else "Blk #---"
+                        
                         dt_val = m.get('delta_t', 0)
-                        dt_str = f"{dt_val}ms"
-                        kalm_str = f"| Kalm: {m['kalman']:.2f}cm" if m.get('kalman') is not None else ""
-                        mov_str  = f"| Mov: {m['media_movel']:.2f}cm" if m.get('media_movel') is not None else ""
+                        dt_str = f"{dt_val:3d}ms" # Garante o alinhamento com 3 digitos
+                        
+                        kalm_str = f"| Kalm: {m['kalman']:6.2f}cm" if m.get('kalman') is not None else ""
+                        mov_str  = f"| Mov: {m['media_movel']:6.2f}cm" if m.get('media_movel') is not None else ""
+                        
                         rssi_bar = self._get_rssi_bars(m['rssi'])
                         rssi_str = f"| RSSI: {m['rssi']:3.0f}dBm {rssi_bar}" if m['rssi'] else ""
-                        per_str = f"| PER: {m['per']:.1f}%" if m['per'] is not None else ""
                         
-                        html += f'<div class="measurement-row"><span>[{ts}]</span><span class="dt-col">Δt: {dt_str}</span><span class="blk-col">{blk_str}</span><span>Raw: {m["distance"]:6.2f}cm {kalm_str} {mov_str} {rssi_str} {per_str}</span></div>\n'
+                        per_str = f"| PER: {m['per']:4.1f}%" if m['per'] is not None else ""
+                        
+                        # Espaçamento literal na string para garantir visual de terminal
+                        html += f'<div class="measurement-row"><span>[{ts}]</span> <span class="dt-col">Δt: {dt_str}</span> <span class="blk-col">{blk_str}</span>   <span>Raw: {m["distance"]:6.2f}cm {kalm_str} {mov_str} {rssi_str} {per_str}</span></div>\n'
                 
                 html += f"""
                         </div>
