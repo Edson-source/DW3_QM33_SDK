@@ -73,7 +73,7 @@ void fira_set_default_params(bool controller)
 
     fira_params->session_id = FIRA_DEFAULT_SESSION_ID;
     fira_params->config_state = FIRA_APP_CONFIG_DEFAULT;
-    session_params->rframe_config = FIRA_RFRAME_CONFIG_SP3;
+    session_params->rframe_config = FIRA_DEFAULT_RFRAME_CONFIG;
     session_params->sts_length = FIRA_STS_LENGTH_128; // Extensão do Scrambled Timestamp Sequence
     session_params->sfd_id = FIRA_DEFAULT_SFD_ID;
     session_params->slot_duration_rstu = FIRA_DEFAULT_SLOT_DURATION_RSTU;
