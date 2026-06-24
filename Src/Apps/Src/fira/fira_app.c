@@ -684,7 +684,7 @@ static char *fira_range_diagnostics_ntf_frame_status_to_string(uint8_t frame_sta
 
 
 /* ========================================================================= */
-/* VARIÁVEIS DA CASCATA DE FILTROS (GATING + MEDIANA + KALMAN 1D)            */
+/* VARIÁVEIS DA CASCATA DE FILTROS (GATING + MEDIANA + KALMAN 2D)            */
 /* ========================================================================= */
 
 // --- 1. GATING FÍSICO ---
@@ -727,12 +727,13 @@ float get_median(float new_val) {
     return temp[count / 2];
 }
 
-// --- 3. FILTRO DE KALMAN 1D ---
-float k_est = 0.0f;       // Estimativa atual do estado (Distância filtrada final)
-float k_p = 1.0f;         // Incerteza da estimativa atual
-float k_q = 0.1f;         // Q: Ruído do Processo 
-float k_r = 15.0f;        // R: Ruído da Medição
-bool kalman_iniciado = false;
+// --- 3. FILTRO DE KALMAN 2D (Posição e Velocidade) ---
+float k2_x[2] = {0.0f, 0.0f}; // Vetor de Estado: [Posição (cm), Velocidade (cm/s)]
+float k2_p[2][2] = {{1.0f, 0.0f}, {0.0f, 1.0f}}; // Matriz de Covariância da Incerteza
+float k2_q = 5.0f;  // Q: Ruído do Processo (Variância da aceleração mecânica)
+float k2_r = 15.0f; // R: Ruído da Medição (Incerteza do UWB após o filtro de Mediana)
+bool kalman2_iniciado = false;
+const float DT_KALMAN = 0.2f; // Delta T em segundos (200ms = 0.2s)
 
 
 /* ========================================================================= */
@@ -808,7 +809,7 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
         len += snprintf(&str_result->str[len], str_result->len - len, "\r\n\r [mac_address=0x%04x, status=\"%s\", PER=%.4f", rm->short_addr, fira_session_info_ntf_twr_status_to_string(rm->status), per);
 
         /* ============================================================== */
-        /* CASCATA DE FILTROS ATIVA: RAW -> GATING -> MEDIANA -> KALMAN   */
+        /* CASCATA DE FILTROS ATIVA: RAW -> GATING -> MEDIANA -> KALMAN 2D*/
         /* ============================================================== */
         if (rm->status == QUWBS_FBS_STATUS_RANGING_SUCCESS)
         {
@@ -834,21 +835,54 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
             /* --- ESTÁGIO 2: FILTRO DE MEDIANA --- */
             float median_distance = get_median(gated_distance);
 
-            /* --- ESTÁGIO 3: FILTRO DE KALMAN 1D --- */
-            if (!kalman_iniciado) {
-                k_est = median_distance; // Inicializa com a mediana polida
-                kalman_iniciado = true;
+            /* --- ESTÁGIO 3: FILTRO DE KALMAN 2D (Cinemático) --- */
+            if (!kalman2_iniciado) {
+                k2_x[0] = median_distance; // Posição inicial travada
+                k2_x[1] = 0.0f;            // Começa parado
+                kalman2_iniciado = true;
             }
             else {
-                k_p = k_p + k_q;
-                float k_gain = k_p / (k_p + k_r);
-                k_est = k_est + k_gain * (median_distance - k_est); // Alimentado pela mediana
-                k_p = (1.0f - k_gain) * k_p;
+                // 1. FASE DE PREDIÇÃO (Física da Máquina)
+                float x_pred_pos = k2_x[0] + (k2_x[1] * DT_KALMAN);
+                float x_pred_vel = k2_x[1];
+
+                // Matriz de Ruído do Processo (Aceleração Constante)
+                float dt2 = DT_KALMAN * DT_KALMAN;
+                float dt3 = dt2 * DT_KALMAN;
+                float dt4 = dt3 * DT_KALMAN;
+                float q00 = (dt4 / 4.0f) * k2_q;
+                float q01 = (dt3 / 2.0f) * k2_q;
+                float q10 = q01;
+                float q11 = dt2 * k2_q;
+
+                // Predição da Matriz de Covariância (P_pred = F * P * F^T + Q)
+                float p_pred_00 = k2_p[0][0] + DT_KALMAN*k2_p[1][0] + DT_KALMAN*(k2_p[0][1] + DT_KALMAN*k2_p[1][1]) + q00;
+                float p_pred_01 = k2_p[0][1] + DT_KALMAN*k2_p[1][1] + q01;
+                float p_pred_10 = k2_p[1][0] + DT_KALMAN*k2_p[1][1] + q10;
+                float p_pred_11 = k2_p[1][1] + q11;
+
+                // 2. FASE DE ATUALIZAÇÃO (Medição do UWB)
+                float y = median_distance - x_pred_pos; // Inovação (Erro entre previsto e medido)
+                float S = p_pred_00 + k2_r;
+
+                // Ganho de Kalman (K)
+                float K0 = p_pred_00 / S;
+                float K1 = p_pred_10 / S;
+
+                // Atualiza o Estado (Corrigindo predição com os dados do sensor)
+                k2_x[0] = x_pred_pos + (K0 * y);
+                k2_x[1] = x_pred_vel + (K1 * y);
+
+                // Atualiza a Covariância (P = (I - K*H) * P_pred)
+                k2_p[0][0] = (1.0f - K0) * p_pred_00;
+                k2_p[0][1] = (1.0f - K0) * p_pred_01;
+                k2_p[1][0] = -K1 * p_pred_00 + p_pred_10;
+                k2_p[1][1] = -K1 * p_pred_01 + p_pred_11;
             }
 
             /* Impressão dos Dados (O Python continuará capturando normalmente) */
             len += snprintf(&str_result->str[len], str_result->len - len, ", distance_bruta[cm]=%d", (int)medicao_bruta);
-            len += snprintf(&str_result->str[len], str_result->len - len, ", kalman[cm]=%.2f", k_est); // k_est agora é o resultado da cascata
+            len += snprintf(&str_result->str[len], str_result->len - len, ", kalman[cm]=%.2f", k2_x[0]); 
             
             /* --- CÁLCULO DA MÉDIA MÓVEL (ANTIGO) --- */
             if (!distance_media_liberada)
