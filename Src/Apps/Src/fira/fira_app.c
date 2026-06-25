@@ -81,22 +81,21 @@ void fira_set_default_params(bool controller)
     session_params->round_duration_slots = FIRA_DEFAULT_ROUND_DURATION_SLOTS;
     session_params->multi_node_mode = FIRA_DEFAULT_MULTI_NODE_MODE;
     session_params->round_hopping = FIRA_DEFAULT_ROUND_HOPPING;
-    session_params->round_hopping = FIRA_DEFAULT_ROUND_HOPPING;
     session_params->schedule_mode = FIRA_SCHEDULE_MODE_TIME_SCHEDULED;
 
     /* ========================================================== */
     /* MÁXIMA SENSIBILIDADE E CONFIABILIDADE DE LINK              */
     /* ========================================================== */
-    session_params->channel_number = 5;                            // Canal 5 (6.5 GHz): Frequência menor = maior penetração
-    session_params->prf_mode = FIRA_PRF_MODE_BPRF;                 // 0 = BPRF (62.4 MHz)
-    session_params->preamble_code_index = 9;                       // Código padrão mais robusto do BPRF
-    session_params->preamble_duration = FIRA_PREAMBLE_DURATION_64; // 1 = 64 símbolos (Ouvido mais apurado)
-    session_params->phr_data_rate = FIRA_PHR_DATA_RATE_850K;       // 0 = 850 kbps (Mais lento = Mais alcance)
-    session_params->psdu_data_rate = FIRA_PSDU_DATA_RATE_6M81;     // 0 = 6.81 Mbps (Taxa de dados mais confiável)
-    session_params->ranging_round_usage = 2;                       // DS-TWR (Imunidade contra drift de clock em distâncias maiores)
-    session_params->max_rr_retry = 3;                              // Hardware luta por 3x antes de derrubar o pacote
-    session_params->report_rssi = 1;                               // Ativa leitura de energia
-    session_params->enable_diagnostics = false;                    // Ativa a coleta de dados de diagnóstico
+    session_params->channel_number = 5;                              // Canal 5 (6.5 GHz): Frequência menor = maior penetração
+    session_params->prf_mode = FIRA_PRF_MODE_BPRF;                   // 0 = BPRF (62.4 MHz)
+    session_params->preamble_code_index = 9;                         // Código padrão mais robusto do BPRF
+    session_params->preamble_duration = FIRA_PREAMBLE_DURATION_64;   // 1 = 64 símbolos (Ouvido mais apurado)
+    session_params->phr_data_rate = FIRA_PHR_DATA_RATE_850K;         // 0 = 850 kbps (Mais lento = Mais alcance)
+    session_params->psdu_data_rate = FIRA_PSDU_DATA_RATE_6M81;       // 0 = 6.81 Mbps (Taxa de dados mais confiável)
+    session_params->ranging_round_usage = 2; // DS-TWR (Imunidade contra drift de clock em distâncias maiores)
+    session_params->max_rr_retry = 3;                                // Hardware luta por 3x antes de derrubar o pacote
+    session_params->report_rssi = 1;                                 // Ativa leitura de energia
+    session_params->enable_diagnostics = false;                      // Ativa a coleta de dados de diagnóstico
 
     /* Bit 0 is for setting tof report. */
     session_params->result_report_config |= fira_helper_bool_to_result_report_config(true, false, false, false);
@@ -616,20 +615,13 @@ static char *fira_session_status_ntf_reason_code_to_string(enum quwbs_fbs_reason
 {
     switch (reason_code)
     {
-        case QUWBS_FBS_REASON_CODE_STATE_CHANGE_WITH_SESSION_MANAGEMENT_COMMANDS:
-            return "State change with session management commands";
-        case QUWBS_FBS_REASON_CODE_MAX_RANGING_ROUND_RETRY_COUNT_REACHED:
-            return "Max ranging round retry count reached";
-        case QUWBS_FBS_REASON_CODE_MAX_NUMBER_OF_MEASUREMENTS_REACHED:
-            return "Max number of measurements reached";
-        case QUWBS_FBS_REASON_CODE_SESSION_SUSPENDED_DUE_TO_INBAND_SIGNAL:
-            return "Session suspended due to inband signal";
-        case QUWBS_FBS_REASON_CODE_SESSION_RESUMED_DUE_TO_INBAND_SIGNAL:
-            return "Session resumed due to inband signal";
-        case QUWBS_FBS_REASON_CODE_SESSION_STOPPED_DUE_TO_INBAND_SIGNAL:
-            return "Session stopped due to inband signal";
-        default:
-            return "Unknown";
+        case QUWBS_FBS_REASON_CODE_STATE_CHANGE_WITH_SESSION_MANAGEMENT_COMMANDS: return "State change with session management commands";
+        case QUWBS_FBS_REASON_CODE_MAX_RANGING_ROUND_RETRY_COUNT_REACHED: return "Max ranging round retry count reached";
+        case QUWBS_FBS_REASON_CODE_MAX_NUMBER_OF_MEASUREMENTS_REACHED: return "Max number of measurements reached";
+        case QUWBS_FBS_REASON_CODE_SESSION_SUSPENDED_DUE_TO_INBAND_SIGNAL: return "Session suspended due to inband signal";
+        case QUWBS_FBS_REASON_CODE_SESSION_RESUMED_DUE_TO_INBAND_SIGNAL: return "Session resumed due to inband signal";
+        case QUWBS_FBS_REASON_CODE_SESSION_STOPPED_DUE_TO_INBAND_SIGNAL: return "Session stopped due to inband signal";
+        default: return "Unknown";
     }
 }
 
@@ -696,7 +688,7 @@ static char *fira_range_diagnostics_ntf_frame_status_to_string(uint8_t frame_sta
 /* ========================================================================= */
 
 // --- 1. GATING FÍSICO ---
-#define MAX_JUMP_CM 50.0f
+#define MAX_JUMP_CM 25.0f // Ajustado para 10 Hz (100ms)
 float last_gated_distance = 0.0f;
 bool gating_iniciado = false;
 
@@ -744,14 +736,14 @@ float k2_p[2][2] = {{1.0f, 0.0f}, {0.0f, 1.0f}};
 float k2_q = 5.0f;
 float k2_r = 15.0f;
 bool kalman2_iniciado = false;
-const float DT_KALMAN = 0.2f;
+const float DT_KALMAN = 0.1f; // Ajustado para 100ms
 
 
 /* ========================================================================= */
 /* ESTRUTURAS DE MÉDIAS MÓVEIS PARALELAS (30 LEITURAS vs 10 LEITURAS)       */
 /* ========================================================================= */
 
-// --- MÉDIA MÓVEL TRADICIONAL (30 Leituras = 6 segundos) ---
+// --- MÉDIA MÓVEL TRADICIONAL (30 Leituras = 3 segundos) ---
 #define QTD_LEITURAS_30 30
 bool media_liberada_30 = false;
 int16_t leituras_30[QTD_LEITURAS_30];
@@ -759,7 +751,7 @@ int8_t idx_30 = 0;
 int32_t soma_30 = 0;
 float media_30 = 0.0f;
 
-// --- NOVA MÉDIA MÓVEL AGIL (10 Leituras = 2 segundos) ---
+// --- NOVA MÉDIA MÓVEL AGIL (10 Leituras = 1 segundo) ---
 #define QTD_LEITURAS_10 10
 bool media_liberada_10 = false;
 int16_t leituras_10[QTD_LEITURAS_10];
@@ -900,7 +892,7 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
                 k2_p[1][1] = -K1 * p_pred_01 + p_pred_11;
             }
 
-            /* --- PROCESSAMENTO DA MÉDIA MÓVEL 30 (6s) --- */
+            /* --- PROCESSAMENTO DA MÉDIA MÓVEL 30 (3s) --- */
             if (!media_liberada_30)
             {
                 leituras_30[idx_30] = rm->distance_cm;
@@ -922,7 +914,7 @@ static void fira_session_info_ntf_twr_cb(const struct fira_twr_ranging_results *
                 media_30 = (float)soma_30 / QTD_LEITURAS_30;
             }
 
-            /* --- PROCESSAMENTO DA MÉDIA MÓVEL 10 (2s) --- */
+            /* --- PROCESSAMENTO DA MÉDIA MÓVEL 10 (1s) --- */
             if (!media_liberada_10)
             {
                 leituras_10[idx_10] = rm->distance_cm;

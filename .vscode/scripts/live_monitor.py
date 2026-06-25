@@ -153,10 +153,10 @@ class LiveMonitor:
         window_measurements = []
         capture_start = time.time()
         
-        while time.time() - capture_start < 5.0:
+        while time.time() - capture_start < 10.0:
             if self.all_measurements:
                 if len(self.all_measurements) > len(window_measurements):
-                    window_measurements = self.all_measurements[-25:]
+                    window_measurements = self.all_measurements[-50:]
             time.sleep(0.05)
         
         if window_measurements:
@@ -514,7 +514,7 @@ class LiveMonitor:
                         <div class="measurements">
 """
                 
-                for m in measurements[:25]:
+                for m in measurements[:50]:
                     if m['distance'] is not None:
                         ts = m['timestamp'].strftime("%H:%M:%S.%f")[:-3]
                         
